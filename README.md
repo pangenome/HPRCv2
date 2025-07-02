@@ -61,7 +61,17 @@ Compute haplotype pairwise similarity in a ROI pangenome:
 ```bash
 impg similarity -p hprc25272.aln.paf.gz -r GRCh38#0#chr11:69809968-69819416 --fasta-list hprcv2.fasta-paths.txt --delim '#' --delim-pos 2 -v 1 > hprc25272.FGF3C4.similarity.tsv # use the --delim and --delim-pos options to get sample#haplotype_id (PanSN-spec)
 
-
+head hprc25272.FGF3C4.similarity.tsv | column -t
+    chrom           start     end       group.a    group.b    group.a.length  group.b.length  intersection  jaccard.similarity  cosine.similarity  dice.similarity  estimated.identity
+    GRCh38#0#chr11  69809968  69819416  CHM13#0    CHM13#0    9434            9434            9434          1                   1                  1                1
+    GRCh38#0#chr11  69809968  69819416  CHM13#0    GRCh38#0   9434            9448            4489          0.3118877           0.4754795          0.4754793        0.4754793
+    GRCh38#0#chr11  69809968  69819416  GRCh38#0   CHM13#0    9448            9434            4489          0.3118877           0.4754795          0.4754793        0.4754793
+    GRCh38#0#chr11  69809968  69819416  CHM13#0    HG00097#1  9434            9506            4486          0.3103639           0.4737099          0.4737065        0.4737065
+    GRCh38#0#chr11  69809968  69819416  HG00097#1  CHM13#0    9506            9434            4486          0.3103639           0.4737099          0.4737065        0.4737065
+    GRCh38#0#chr11  69809968  69819416  CHM13#0    HG00097#2  9434            9477            4487          0.3110788           0.4745398          0.4745386        0.4745386
+    GRCh38#0#chr11  69809968  69819416  HG00097#2  CHM13#0    9477            9434            4487          0.3110788           0.4745398          0.4745386        0.4745386
+    GRCh38#0#chr11  69809968  69819416  CHM13#0    HG00099#1  9434            9455            4489          0.3117361           0.4753034          0.4753031        0.4753031
+    GRCh38#0#chr11  69809968  69819416  HG00099#1  CHM13#0    9455            9434            4489          0.3117361           0.4753034          0.4753031        0.4753031
 
 ```
 
@@ -69,9 +79,10 @@ Perform principal component analysis (PCA) on a ROI pangenome:
 
 ```bash
 echo -e "GRCh38#0#chr17\t42800000\t46800000" > 17q21.bed
+echo -e "GRCh38#0#chr17\t45500000\t46500000" > 17q21.bed
 bedtools makewindows -b 17q21.bed -w 5000 > 17q21.windows5kb.bed
 
-impg similarity -p hprc25272.aln.paf.gz -b 17q21.windows5kb.bed --fasta-list hprcv2.fasta-paths.txt --pca --pca-components 1 --delim '#' --threads 32 -v 1 > pca_results.txt
+impg similarity -p hprc25272.aln.paf.gz -b 17q21.windows5kb.bed --fasta-list hprcv2.fasta-paths.txt --pca --pca-components 1 --delim '#' --delim-pos 2 -v 2 --polarize-guide-samples "CHM13#0" --threads 32 > pca_results.txt
 ```
 
 Partition the pangenome by using CHM13 chromosomes as starting sequences:
@@ -81,7 +92,7 @@ cut -f 1 chm13v2.0_maskedY_rCRS.fa.PanSN.fa.gz.fai > starting-sequences.txt # pr
 impg partition -p hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min-missing-size 10000 --merge-distance 1000000  --min-transitive-len 1000 --starting-sequences-file starting-sequences.txt    --selection-mode total --output-folder partitions -t 32 -v 1
 ```
 
-The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with GFALACE.
+The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with [GFALACE](https://github.com/pangenome/gfalace).
 
 ## Explicit pangenome graph
 
