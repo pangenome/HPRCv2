@@ -7,7 +7,7 @@ Get the pangenome alignment - generated with [WFMASH](https://github.com/waveyga
 
 ## Implicit pangenome graph
 
-Get the IMPG index - generated with [IMPG](https://github.com/pangenome/impg) - at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc25272.impg.idx.
+Get the IMPG index - generated with [IMPG](https://github.com/pangenome/impg) - at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc25272.aln.paf.gz.impg.
 
 We built the IMPG index with the following command:
 
@@ -15,7 +15,7 @@ We built the IMPG index with the following command:
 impg index -p hprc25272.aln.paf.gz 
 ```
 
-which requires the bgzipped PAF file (representing the pangenome alignment) and its bgzip index (`.gzi` file). The latter can be found at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz.gzi or generated with the following command:
+which requires the bgzipped PAF file (representing the pangenome alignment) and its bgzip index (`.gzi` file). The latter can be found at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz.gzi or generated from the bgzipped PAF file with the following command:
 
 ```bash
 bgzip -r hprc25272.aln.paf.gz 
@@ -25,7 +25,7 @@ Put the IMPG index in the same directory as the PAF file, and then you can query
 
 ### What you can do with an implicit pangenome graph
 
-Query the pangenome for a specific region-of-interest (ROI):
+Get a region-of-interest (ROI) pangenome:
 
 ```bash
 impg query -p hprc25272.paf.gz -r GRCh38#0#chr8:5748405-13676927 --merge-distance 1000000 > hprcv2.human8p23-1.bed
@@ -46,35 +46,39 @@ awk '$3-$2>=2000000' hprcv2.human8p23-1.bed | sort | head | column -t
 Make a ROI explicit pangenome graph with [PGGB](https://github.com/pangenome/pggb):
 
 ```bash
-ls ls /lizardfs/guarracino/pangenomes/HPRCv2/*.fa.gz > hprcv2.fasta-paths.txt
-impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --fasta-list hprcv2.fasta-paths.txt | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz
-samtools faidx hprc25272.C4.fa.gz
-pggb -i hprc25272.C4.fa.gz -o pggb.hprc25272.C4
+ls /lizardfs/guarracino/pangenomes/HPRCv2/*.fa.gz > hprcv2.fasta-paths.txt # prepare a list of FASTA files for the pangenome sequence
+impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --fasta-list hprcv2.fasta-paths.txt | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz # get the ROI pangenome in FASTA format
+samtools faidx hprc25272.C4.fa.gz # index the ROI FASTA file
+pggb -i hprc25272.C4.fa.gz -o pggb.hprc25272.C4 # build the ROI pangenome graph with PGGB
 ```
 
-This is the result graph visualized with [ODGI](https://github.com/pangenome/odgi):
+This is the resulting graph visualized with [ODGI](https://github.com/pangenome/odgi):
 
 ![C4 pangenome graph layout](./images/hprc25272.C4.fa.gz.a65af12.11fba48.3bf8f48.smooth.final.og.lay.draw.png)
 
-
-Compute pairwise similarity in a ROI pangenome:
+Compute haplotype pairwise similarity in a ROI pangenome:
 
 ```bash
-impg similarity -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 --fasta-list hprcv2.fasta-paths.txt > hprc25272.C4.similarity.tsv
+impg similarity -p hprc25272.aln.paf.gz -r GRCh38#0#chr11:69809968-69819416 --fasta-list hprcv2.fasta-paths.txt --delim '#' --delim-pos 2 -v 1 > hprc25272.FGF3C4.similarity.tsv # use the --delim and --delim-pos options to get sample#haplotype_id (PanSN-spec)
+
+
+
 ```
 
 Perform principal component analysis (PCA) on a ROI pangenome:
 
 ```bash
-impg similarity -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 --pca
+echo -e "GRCh38#0#chr17\t42800000\t46800000" > 17q21.bed
+bedtools makewindows -b 17q21.bed -w 5000 > 17q21.windows5kb.bed
+
+impg similarity -p hprc25272.aln.paf.gz -b 17q21.windows5kb.bed --fasta-list hprcv2.fasta-paths.txt --pca --pca-components 1 --delim '#' --threads 32 -v 1 > pca_results.txt
 ```
 
-######## CHECK REGION IN WINDOWEDPCA PAPER FOR A PC1 PLOT
-
-Partition the pangenome:
+Partition the pangenome by using CHM13 chromosomes as starting sequences:
 
 ```bash
-impg ppartition -p hprc25272.aln.paf.gz -w 1000000 -m 5 -f 10000 -d 1000000 -l 1000 --chm13-total
+cut -f 1 chm13v2.0_maskedY_rCRS.fa.PanSN.fa.gz.fai > starting-sequences.txt # prepare the list of starting sequences
+impg partition -p hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min-missing-size 10000 --merge-distance 1000000  --min-transitive-len 1000 --starting-sequences-file starting-sequences.txt    --selection-mode total --output-folder partitions -t 32 -v 1
 ```
 
 The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with GFALACE.
