@@ -28,7 +28,7 @@ Put the IMPG index in the same directory as the PAF file, and then you can query
 Get a region-of-interest (ROI) pangenome:
 
 ```bash
-impg query -p hprc25272.paf.gz -r GRCh38#0#chr8:5748405-13676927 --merge-distance 1000000 > hprcv2.human8p23-1.bed
+impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr8:5748405-13676927 --merge-distance 1000000 -v 1 > hprcv2.human8p23-1.bed
 
 awk '$3-$2>=2000000' hprcv2.human8p23-1.bed | sort | head | column -t
     CHM13#0#chr8                 7491000  11605998  .  .  -
@@ -47,7 +47,7 @@ Make a ROI explicit pangenome graph with [PGGB](https://github.com/pangenome/pgg
 
 ```bash
 ls /lizardfs/guarracino/pangenomes/HPRCv2/*.fa.gz > hprcv2.fasta-paths.txt # prepare a list of FASTA files for the pangenome sequence
-impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --fasta-list hprcv2.fasta-paths.txt | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz # get the ROI pangenome in FASTA format
+impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --fasta-list hprcv2.fasta-paths.txt -v 1 | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz # get the ROI pangenome in FASTA format
 samtools faidx hprc25272.C4.fa.gz # index the ROI FASTA file
 pggb -i hprc25272.C4.fa.gz -o pggb.hprc25272.C4 # build the ROI pangenome graph with PGGB
 ```
