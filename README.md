@@ -4,14 +4,14 @@ pangenome alignment, implicit/explicit graph, and variants for human pangenome p
 ## Pangenome alignment
 
 Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang/wfmash):
-- ~22k pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz
+- 25221 pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz
 - 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vschm13.aln.paf.gz
 - 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vsgrch38.aln.paf.gz
 
 ## Implicit pangenome graph
 
 Get the IMPG index generated with [IMPG](https://github.com/pangenome/impg):
-- ~22k pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc25272.aln.paf.gz.impg
+- 25221 pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc25272.aln.paf.gz.impg
 - 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc465vschm13.aln.paf.gz.impg
 - 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc465vsgrch38.aln.paf.gz.impg
 
@@ -41,6 +41,8 @@ Put the IMPG and bgzip indexes in the same directory as the corresponding PAF fi
 
 ### What you can do with an implicit pangenome graph
 
+#### Querying the pangenome
+
 Get a region-of-interest (ROI) pangenome:
 
 ```bash
@@ -59,6 +61,8 @@ awk '$3-$2>=2000000' hprcv2.human8p23-1.bed | sort | head | column -t
     HG00128#2#JBHIKT010000047.1  5598009  9704000   GRCh38#0#chr8:5748405-13676927  .  -
 ```
 
+#### Region-of-interest (ROI) pangenome graph building
+
 Make a ROI explicit pangenome graph with [PGGB](https://github.com/pangenome/pggb):
 
 ```bash
@@ -71,6 +75,8 @@ pggb -i hprc25272.C4.fa.gz -o pggb.hprc25272.C4 # build the ROI pangenome graph 
 This is the resulting graph visualized with [ODGI](https://github.com/pangenome/odgi):
 
 ![C4 pangenome graph layout](./images/hprc25272.C4.fa.gz.a65af12.11fba48.3bf8f48.smooth.final.og.lay.draw.png)
+
+#### ROI pangenome analysis
 
 Compute haplotype pairwise similarity in a ROI pangenome:
 
@@ -100,6 +106,8 @@ bedtools makewindows -b 17q21.bed -w 5000 > 17q21.windows5kb.bed
 impg similarity -p hprc25272.aln.paf.gz -b 17q21.windows5kb.bed --fasta-list hprcv2.fasta-paths.txt --pca --pca-components 1 --delim '#' --delim-pos 2 -v 2 --polarize-guide-samples "CHM13#0" --threads 32 > pca_results.txt
 ``` -->
 
+#### Pangenome partitioning
+
 Partition the pangenome by using CHM13 chromosomes as starting sequences:
 
 ```bash
@@ -107,7 +115,7 @@ cut -f 1 chm13v2.0_maskedY_rCRS.fa.PanSN.fa.gz.fai > starting-sequences.txt # pr
 impg partition -p hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min-missing-size 10000 --merge-distance 1000000  --min-transitive-len 1000 --starting-sequences-file starting-sequences.txt    --selection-mode total --output-folder partitions -t 32 -v 1
 ```
 
-The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with [GFALACE](https://github.com/pangenome/gfalace).
+The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with [impg lace](https://github.com/pangenome/impg).
 
 ## Explicit pangenome graph
 
