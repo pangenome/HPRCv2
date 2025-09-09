@@ -61,7 +61,7 @@ awk '$3-$2>=2000000' hprcv2.human8p23-1.bed | sort | head | column -t
     HG00128#2#JBHIKT010000047.1  5598009  9704000   GRCh38#0#chr8:5748405-13676927  .  -
 ```
 
-#### Region-of-interest (ROI) pangenome graph building
+#### Region-of-interest pangenome graph building
 
 Make a ROI explicit pangenome graph with [PGGB](https://github.com/pangenome/pggb):
 
@@ -76,7 +76,7 @@ This is the resulting graph visualized with [ODGI](https://github.com/pangenome/
 
 ![C4 pangenome graph layout](./images/hprc25272.C4.fa.gz.a65af12.11fba48.3bf8f48.smooth.final.og.lay.draw.png)
 
-#### ROI pangenome analysis
+#### Region-of-interest pangenome analysis
 
 Compute haplotype pairwise similarity in a ROI pangenome:
 
@@ -106,7 +106,7 @@ bedtools makewindows -b 17q21.bed -w 5000 > 17q21.windows5kb.bed
 impg similarity -p hprc25272.aln.paf.gz -b 17q21.windows5kb.bed --fasta-list hprcv2.fasta-paths.txt --pca --pca-components 1 --delim '#' --delim-pos 2 -v 2 --polarize-guide-samples "CHM13#0" --threads 32 > pca_results.txt
 ``` -->
 
-#### Pangenome partitioning
+#### Partitioning the pangenome
 
 Partition the pangenome by using CHM13 chromosomes as starting sequences:
 
@@ -116,6 +116,63 @@ impg partition -p hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min
 ```
 
 The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with [impg lace](https://github.com/pangenome/impg).
+
+#### Coverage plots
+
+Prepare working directory and paths:
+
+```shell
+mkdir -p /chm13-scan
+cd /chm13-scan
+paf=<<YOUR PATH FILE>> # e.g. /scratch/hprc25272.aln.paf.gz
+```
+
+Prepare the regions to query (in this example, 100kbp windows for all CHM13's chromosomes except chrM, and 1kbp windows for chrM):
+
+```shell
+target_fasta=/lizardfs/guarracino/pangenomes/HPRCv2/chm13v2.0_maskedY_rCRS.fa.PanSN.fa.gz
+name=$(basename $target_fasta .fa.PanSN.fa.gz)
+cut -f 1,2 $target_fasta.fai | awk -v OFS='\t' '{print($1,"0",$2)}' > $name.bed
+bedtools makewindows -b <(grep chrM -v $name.bed) -w 100000 | awk -v OFS='\t' '{print($0,$1"_"$2"_"$3)}' > $name.w100k.bed
+bedtools makewindows -b <(grep chrM $name.bed) -w 1000 | awk -v OFS='\t' '{print($0,$1"_"$2"_"$3)}' >> $name.w100k.bed
+```
+
+Run pangenome queries:
+
+```shell
+mkdir -p impg-query-output_w100k
+awk '{print $1":"$2"-"$3" "$1"_"$2"_"$3}' $name.w100k.bed | \
+parallel -j 24 --colsep ' ' \
+  "impg query --paf-files /scratch/hprc25272.aln.paf.gz -r {1} -t 1 -o bedpe | gzip -9 > impg-query-output_w100k/{2}.bedpe.gz"
+```
+
+Collect statistics:
+
+```shell
+echo -e "chrom\tstart\tend\tnum_alignments\tnum_alignments_merged\tnum_haplotypes\tnum_samples" > hprc25272.CHM13.w100k.tsv
+find impg-query-output_w100k/ -name "*.bedpe.gz" | sort -V | \
+parallel -j 24 '
+  name=$(basename {} .bedpe.gz)
+  IFS="_" read -r chrom start end <<< "$name"
+  
+  # Store in temp file to avoid echo issues
+  zcat {} | sort -k1,1 -k2,2n | bedtools merge > /tmp/merged_$$.tmp
+  
+  num_alignments=$(zcat {} | wc -l)
+  num_alignments_merged=$(cat /tmp/merged_$$.tmp | wc -l)
+  num_haplotypes=$(cut -f1,2 -d"#" /tmp/merged_$$.tmp | sort -u | wc -l)
+  num_samples=$(cut -f1 -d"#" /tmp/merged_$$.tmp | sort -u | wc -l)
+  
+  echo -e "$chrom\t$start\t$end\t$num_alignments\t$num_alignments_merged\t$num_haplotypes\t$num_samples"
+  rm -f /tmp/merged_$$.tmp
+' >> hprc25272.CHM13.w100k.tsv
+```
+
+Use `scripts/plot-impg-coverage.R` to plot coverage statistics:
+
+![Impg coverage - Alignments](./images/hprc25272.CHM13.w100k.alnignments.png)
+
+![Impg coverage - Samples/Haplotypes](./images/hprc25272.CHM13.w100k.samples-haplotypes.png)
 
 ## Explicit pangenome graph
 
