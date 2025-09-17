@@ -176,10 +176,9 @@ Use `scripts/plot-impg-coverage.R` to plot coverage statistics:
 
 ## Explicit pangenome graph
 
-Get the explicit whole-pangenome PGGB-graph at https://garrisonlab.s3.amazonaws.com/hprcv2/gfas/w1000000-m5-f10000-d1000000-l1000-chm13-total.tmp.fix.gfa.gz.
+Get the explicit whole-pangenome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/.
 
 ## Variants
 
-Get the whole-pangenome PGGB-graph variants called with VG DECONSTRUCT with respect to:
-- GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/vcfs/hprc8424.GRCh38.merged.norm.vcf.gz
-- CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/vcfs/hprc8424.CHM13.merged.norm.vcf.gz
+Get the whole-pangenome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/.
+
