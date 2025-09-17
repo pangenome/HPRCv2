@@ -9,7 +9,7 @@ library(readr)
 # Read the data
 num_haplo <- 466
 num_sample <- 234
-data <- read_tsv("/home/guarracino/Desktop/hprc25272.CHM13.w100k.tsv")
+data <- read_tsv("/home/guarracino/Desktop/hprc25272.CHM13.w100k-xm3-l3000.tsv.gz")
 # Extract chromosome information from the chrom column
 data <- data %>%
   mutate(
@@ -158,6 +158,70 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
             inherit.aes = FALSE,  # Don't inherit aesthetics from the main plot
             color = "black", hjust = +0.9, vjust = +1.5, size = 3)
 
+p_num_chromosomes <- ggplot(data, aes(x = position, y = num_chromosomes))
+
+p_num_chromosomes <- p_num_chromosomes +
+  geom_line(color = "darkorange", linewidth = 0.8) +
+  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
+                     expand = expansion(mult = c(0.09, 0.15))) +  # Add padding to x-axis
+  labs(
+    title = "Number of Unique Chromosomes per Region across CHM13 (100kbp windows)",
+    x = "Position (Mbp)",
+    y = "Number of Chromosomes"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.background = element_rect(fill = "lightgray"),
+    strip.text = element_text(size = 13),  # Larger facet text
+    panel.spacing = unit(0.5, "lines"),
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 14)
+  ) #+
+  # Add horizontal reference lines for expected number of autosomes (22) and all chromosomes (24 without chrM, or 25 with chrM)
+  #geom_hline(yintercept = 22, linetype = "dashed", color = "gray50", alpha = 0.7) +
+  #geom_hline(yintercept = 24, linetype = "dashed", color = "gray30", alpha = 0.7) #+
+  # Add text annotations for reference lines
+  #annotate("text", x = 0, y = 22, label = "22 (autosomes)", 
+  #         color = "gray50", hjust = +0.9, vjust = +1.5, size = 3) +
+  #annotate("text", x = 0, y = 24, label = "24 (all chr)", 
+  #         color = "gray30", hjust = +0.9, vjust = +1.5, size = 3)
+
 # Print the plots
 print(p_combined_alignments)
 print(p_combined_haplo_samples)
+print(p_num_chromosomes)
+
+width=16
+height=9
+dpi=300
+
+ggsave(
+  filename = "p_combined_alignments.pdf",
+  plot = p_combined_alignments,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+ggsave(
+  filename = "p_combined_haplo_samples.pdf",
+  plot = p_combined_haplo_samples,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+ggsave(
+  filename = "p_num_chromosomes.pdf",
+  plot = p_num_chromosomes,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
