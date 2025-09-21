@@ -22,6 +22,86 @@ from pathlib import Path
 
 # ---------------- I/O helpers ----------------
 
+def read_cytobands_with_stain(bed_path, chroms_keep):
+    """
+    Expect BED with at least 5 cols: chrom, start, end, band_name, stain
+    Returns ['chromosome','start','end','name','stain'] filtered to chroms_keep.
+    """
+    p = Path(bed_path)
+    if not p.exists():
+        print(f"[warn] cytoband BED not found: {p}", file=sys.stderr)
+        return pd.DataFrame(columns=["chromosome","start","end","name","stain"])
+    df = pd.read_csv(
+        p, sep="\t", header=None, usecols=[0,1,2,3,4],
+        names=["chromosome","start","end","name","stain"],
+        dtype={"chromosome":"string","start":np.int64,"end":np.int64,"name":"string","stain":"string"}
+    )
+    df["chromosome"] = df["chromosome"].astype(str)
+    return df[df["chromosome"].isin(chroms_keep)].copy()
+
+
+import matplotlib.patches as patches
+import matplotlib.path as mpath
+import numpy as np
+
+_BAND_COLORS = {
+    "gneg":    "#FFFFFF",
+    "gpos25":  "#D9D9D9",
+    "gpos33":  "#C0C0C0",
+    "gpos50":  "#A6A6A6",
+    "gpos66":  "#8C8C8C",
+    "gpos75":  "#737373",
+    "gpos100": "#595959",
+    "gvar":    "#BFBFBF",  # variable; light gray
+    "stalk":   "#A0A0FF",  # stalks; bluish
+    "acen":    "#CC3333",  # centromere; red
+}
+
+def _band_color(stain: str) -> str:
+    s = (stain or "").lower()
+    return _BAND_COLORS.get(s, "#CCCCCC")
+
+def draw_ideogram(ax, cyto_df, y_center, height, chrom_length_mb=None):
+    """
+    Draw a cytoband ideogram as a thin bar centered at y_center with total height.
+    Assumes ax x-limits are Mb. cyto_df has columns: start, end, stain.
+    """
+    if cyto_df.empty:
+        return
+
+    y0 = y_center - height/2.0
+    y1 = y_center + height/2.0
+    # If explicit chrom length not given, infer from last band end
+    if chrom_length_mb is None:
+        chrom_length_mb = cyto_df["end"].max() / 1e6
+
+    for _, row in cyto_df.iterrows():
+        x0 = row["start"] / 1e6
+        x1 = row["end"]   / 1e6
+        stain = str(row["stain"]).lower()
+
+        if stain == "acen":
+            # Draw triangular wedge(s) for centromere
+            Path = mpath.Path
+            verts = [(x0, y0), (x0, y1), (x1, (y0+y1)/2.0), (x0, y0)]
+            codes = [Path.MOVETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY]
+            patch = patches.PathPatch(mpath.Path(verts, codes),
+                                      facecolor=_BAND_COLORS["acen"],
+                                      edgecolor="none", lw=0, zorder=0.5)
+            ax.add_patch(patch)
+        else:
+            rect = patches.Rectangle((x0, y0), x1-x0, height,
+                                     facecolor=_band_color(stain),
+                                     edgecolor="black", linewidth=0.15,
+                                     zorder=0.5)
+            ax.add_patch(rect)
+
+    # outline whole chromosome silhouette (optional subtle stroke)
+    ax.add_patch(patches.Rectangle((0, y0), chrom_length_mb, height,
+                                   fill=False, edgecolor="black",
+                                   linewidth=0.2, zorder=0.6))
+
+
 def read_vcf_positions(vcf_path, chroms_keep):
     """
     Fast VCF loader: returns DataFrame ['chromosome','pos','svtype'].
@@ -454,6 +534,29 @@ def main():
         # Baseline (1x)
         ax.axhline(0.0, color="black", linewidth=0.3, alpha=0.5)
 
+        cyto_full = read_cytobands_with_stain(args.bed_cytoband, all_chroms)
+
+        # --- Ideogram placement (bigger, stretches down from the top) ---
+        # Put the top of the ideogram just below the top y-limit, then stretch downward.
+        ideo_margin_top = 0.05          # gap from the very top so it doesn't clip
+        ideo_height     = 0.40          # increase this to make it taller (e.g. 0.40–0.55 looks good)
+
+        y_top     = y_limits[1] - ideo_margin_top
+        y_center  = y_top - ideo_height / 2.0
+
+        # Get cytobands for this chromosome
+        cyto_chrom = cyto_full[cyto_full["chromosome"] == chrom][["start","end","stain"]]
+
+        # Use chromosome length in Mb (max of coverage bins & cyto ends)
+        chrom_len_mb = max(
+            float(sub["bin_mb"].max()),
+            float(cyto_chrom["end"].max() / 1e6) if not cyto_chrom.empty else 0.0
+        )
+
+        # Draw the ideogram bigger, behind lines
+        draw_ideogram(ax, cyto_chrom, y_center=y_center, height=ideo_height, chrom_length_mb=chrom_len_mb)
+
+
         # Variant densities (anchored just below 0.01x, descending with density)
         if not args.no_sv:
             for sv_name in track_names:
@@ -517,6 +620,29 @@ def main():
         ax.plot(sub["bin_mb"], sub["log10_total"],  linewidth=0.75, alpha=0.9, color="darkblue",   label="Total sequence")
         ax.plot(sub["bin_mb"], sub["log10_nonref"], linewidth=0.75, alpha=0.9, color="darkorange", label="Non-reference sequence")
         ax.axhline(0.0, color="black", linewidth=0.3, alpha=0.5)
+
+        cyto_full = read_cytobands_with_stain(args.bed_cytoband, all_chroms)
+
+        # --- Ideogram placement (bigger, stretches down from the top) ---
+        # Put the top of the ideogram just below the top y-limit, then stretch downward.
+        ideo_margin_top = 0.05          # gap from the very top so it doesn't clip
+        ideo_height     = 0.40          # increase this to make it taller (e.g. 0.40–0.55 looks good)
+
+        y_top     = y_limits[1] - ideo_margin_top
+        y_center  = y_top - ideo_height / 2.0
+
+        # Get cytobands for this chromosome
+        cyto_chrom = cyto_full[cyto_full["chromosome"] == chrom][["start","end","stain"]]
+
+        # Use chromosome length in Mb (max of coverage bins & cyto ends)
+        chrom_len_mb = max(
+            float(sub["bin_mb"].max()),
+            float(cyto_chrom["end"].max() / 1e6) if not cyto_chrom.empty else 0.0
+        )
+
+        # Draw the ideogram bigger, behind lines
+        draw_ideogram(ax, cyto_chrom, y_center=y_center, height=ideo_height, chrom_length_mb=chrom_len_mb)
+
 
         if not args.no_sv:
             for sv_name in track_names:
