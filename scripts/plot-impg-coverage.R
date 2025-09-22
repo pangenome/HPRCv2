@@ -7,7 +7,7 @@ library(tidyr)
 library(readr)
 
 # Optional: Set BED file path here (set to NULL if no BED file)
-bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'
+bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'  # Change this to your BED file path
 
 # Function to read and process BED file
 read_bed_regions <- function(bed_path) {
@@ -64,6 +64,36 @@ if (!is.null(bed_regions)) {
 num_haplo <- 466
 num_sample <- 234
 data <- read_tsv("/home/guarracino/Desktop/hprc25272.CHM13.w100k-xm3-id095-l3000.tsv.gz")
+
+# Parse the chroms-num_haplotypes column to extract chromosome information
+parse_chroms_column <- function(chroms_str) {
+  if (is.na(chroms_str) || chroms_str == "") {
+    return(list(num_chromosomes = 0, chromosomes = NA))
+  }
+  
+  # Split by comma
+  pairs <- strsplit(chroms_str, ",")[[1]]
+  
+  # Extract chromosome names (everything before the last hyphen)
+  chrom_names <- sapply(pairs, function(x) {
+    parts <- strsplit(x, "-")[[1]]
+    # Join all but the last part (in case chromosome name contains hyphen)
+    paste(parts[-length(parts)], collapse = "-")
+  })
+  
+  # Remove any whitespace
+  chrom_names <- trimws(chrom_names)
+  
+  return(list(
+    num_chromosomes = length(unique(chrom_names)),
+    chromosomes = paste(unique(chrom_names), collapse = ",")
+  ))
+}
+
+# Apply parsing to the entire dataset
+parsed_data <- lapply(data$`chroms-num_haplotypes`, parse_chroms_column)
+data$num_chromosomes <- sapply(parsed_data, function(x) x$num_chromosomes)
+data$chromosomes <- sapply(parsed_data, function(x) x$chromosomes)
 
 # Extract chromosome information from the chrom column
 data <- data %>%
@@ -273,7 +303,8 @@ p_num_chromosomes <- p_num_chromosomes +
     panel.spacing = unit(0.5, "lines"),
     plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
     axis.text = element_text(size = 11),
-    axis.title = element_text(size = 14)
+    axis.title = element_text(size = 14),
+    legend.position = "bottom"
   ) +
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.7)
 
@@ -459,7 +490,7 @@ plot_single_chromosome <- function(data,
                 alpha = 0.3)
     
     # Add color scale if bed_colors provided
-    if (!is.null(bed_colors)) {
+    if (exists("bed_colors")) {
       p <- p + scale_fill_manual(values = bed_colors, name = "Region Type")
     }
   }
@@ -503,13 +534,6 @@ plot_single_chromosome <- function(data,
   return(p)
 }
 
-plot_single_chromosome(data, 
-                        target_chr = "chrY", 
-                        start_mbp = 0, 
-                        end_mbp = 1155,
-                        bed_regions = bed_regions)
-
-
 # General function to create chromosome matching heatmap
 plot_chromosome_matching_heatmap <- function(data, 
                                              target_chr = "chr1", 
@@ -517,7 +541,6 @@ plot_chromosome_matching_heatmap <- function(data,
                                              end_mbp = NULL,
                                              bed_regions = NULL,
                                              highlight_regions = TRUE,
-                                             save_plot = FALSE,
                                              output_filename = NULL) {
   
   # Filter for the target chromosome
@@ -536,16 +559,50 @@ plot_chromosome_matching_heatmap <- function(data,
   data_max <- max(chr_data$position)
   
   # Set position range with defaults
-  if (is.null(start_mbp)) start_mbp <- data_min
-  if (is.null(end_mbp)) end_mbp <- data_max
+  if (is.null(start_mbp)) {
+    start_mbp <- data_min
+  } else {
+    # Ensure start_mbp is within data range
+    if (start_mbp < data_min) {
+      message(paste0("Adjusting start from ", start_mbp, " to data minimum ", round(data_min, 2), " Mbp"))
+      start_mbp <- data_min
+    }
+    if (start_mbp > data_max) {
+      warning(paste0("start_mbp (", start_mbp, ") is beyond data range. Using data minimum."))
+      start_mbp <- data_min
+    }
+  }
   
-  # Adjust to actual data boundaries
-  start_mbp <- max(start_mbp, data_min)
-  end_mbp <- min(end_mbp, data_max)
+  if (is.null(end_mbp)) {
+    end_mbp <- data_max
+  } else {
+    # Ensure end_mbp is within data range
+    if (end_mbp > data_max) {
+      message(paste0("Adjusting end from ", end_mbp, " to data maximum ", round(data_max, 2), " Mbp"))
+      end_mbp <- data_max
+    }
+    if (end_mbp < data_min) {
+      warning(paste0("end_mbp (", end_mbp, ") is before data range. Using data maximum."))
+      end_mbp <- data_max
+    }
+  }
+  
+  # Validate that start < end
+  if (start_mbp >= end_mbp) {
+    warning("start_mbp must be less than end_mbp. Swapping values.")
+    temp <- start_mbp
+    start_mbp <- end_mbp
+    end_mbp <- temp
+  }
   
   # Filter by position range
-  chr_data <- chr_data %>%
+  chr_data_filtered <- chr_data %>%
     filter(position >= start_mbp & position <= end_mbp)
+  
+  if (nrow(chr_data_filtered) == 0) {
+    warning(paste0("No data in specified range [", round(start_mbp, 2), ", ", round(end_mbp, 2), "] Mbp"))
+    return(NULL)
+  }
   
   # Parse the comma-separated chromosomes list into a binary matrix
   parse_chromosomes_binary <- function(data) {
@@ -577,16 +634,18 @@ plot_chromosome_matching_heatmap <- function(data,
   }
   
   # Create binary matrix
-  chr_binary <- parse_chromosomes_binary(chr_data)
+  chr_binary <- parse_chromosomes_binary(chr_data_filtered)
   
   # Combine with position data for plotting
-  chr_heatmap_data <- cbind(chr_data %>% select(position), chr_binary) %>%
+  chr_heatmap_data <- cbind(chr_data_filtered %>% select(position), chr_binary) %>%
     as.data.frame() %>%
     pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "present")
   
-  # Calculate appropriate x-axis breaks
+  # Calculate appropriate x-axis breaks based on the range
   x_range <- end_mbp - start_mbp
-  if (x_range <= 10) {
+  if (x_range <= 5) {
+    x_breaks <- seq(floor(start_mbp*2)/2, ceiling(end_mbp*2)/2, by = 0.5)
+  } else if (x_range <= 10) {
     x_breaks <- seq(floor(start_mbp), ceiling(end_mbp), by = 1)
   } else if (x_range <= 50) {
     x_breaks <- seq(floor(start_mbp/5)*5, ceiling(end_mbp/5)*5, by = 5)
@@ -595,6 +654,9 @@ plot_chromosome_matching_heatmap <- function(data,
   } else {
     x_breaks <- seq(floor(start_mbp/50)*50, ceiling(end_mbp/50)*50, by = 50)
   }
+  
+  # Filter to ensure breaks are within the actual range
+  x_breaks <- x_breaks[x_breaks >= start_mbp & x_breaks <= end_mbp]
   
   # Create the binary heatmap
   p_heatmap <- ggplot(chr_heatmap_data, 
@@ -610,14 +672,14 @@ plot_chromosome_matching_heatmap <- function(data,
     labs(
       title = paste0("Chromosome Matching Pattern for ", target_chr, 
                      " (", round(start_mbp, 1), "-", round(end_mbp, 1), " Mbp)"),
-      subtitle = "100kb windows",
+      subtitle = paste0("100kb windows (", nrow(chr_data_filtered), " windows in range)"),
       x = paste0("Position on ", target_chr, " (Mbp)"),
       y = "Matching Chromosome"
     ) +
     theme_minimal() +
     theme(
       axis.text.y = element_text(size = 8),
-      axis.text.x = element_text(size = 10),
+      axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
       plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
       plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
       panel.grid = element_blank(),
@@ -627,25 +689,36 @@ plot_chromosome_matching_heatmap <- function(data,
   
   # Add BED region annotations if provided
   if (!is.null(bed_regions) && highlight_regions) {
+    # Store the input parameters with different names to avoid naming conflicts
+    input_start <- start_mbp
+    input_end <- end_mbp
+    
     chr_bed <- bed_regions %>% 
       filter(chromosome == target_chr) %>%
-      filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
+      # Filter for regions that overlap with the specified range
+      filter(end_mbp >= input_start & start_mbp <= input_end) %>%
+      # Clip the regions to the specified range
+      mutate(
+        start_mbp_clipped = pmax(start_mbp, input_start),
+        end_mbp_clipped = pmin(end_mbp, input_end),
+        mid_pos = (start_mbp_clipped + end_mbp_clipped) / 2
+      )
     
     if (nrow(chr_bed) > 0) {
       # Add vertical lines for region boundaries
       p_heatmap <- p_heatmap +
-        geom_vline(data = chr_bed, aes(xintercept = start_mbp), 
-                   color = "red", linetype = "dashed", alpha = 0.5) +
-        geom_vline(data = chr_bed, aes(xintercept = end_mbp), 
-                   color = "red", linetype = "dashed", alpha = 0.5)
+        geom_vline(data = chr_bed, aes(xintercept = start_mbp_clipped), 
+                   color = "red", linetype = "dashed", alpha = 0.5, size = 0.3) +
+        geom_vline(data = chr_bed, aes(xintercept = end_mbp_clipped), 
+                   color = "red", linetype = "dashed", alpha = 0.5, size = 0.3)
       
       # Add region labels at the top
-      chr_bed <- chr_bed %>%
-        mutate(mid_pos = (start_mbp + end_mbp) / 2)
+      # Calculate y position for labels (above the heatmap)
+      y_label_pos <- length(paste0("chr", c(1:22, "X", "Y", "M"))) + 0.5
       
       p_heatmap <- p_heatmap +
         geom_text(data = chr_bed,
-                  aes(x = mid_pos, y = 26, label = name),
+                  aes(x = mid_pos, y = y_label_pos, label = name),
                   angle = 0, vjust = 0, size = 3, color = "red",
                   inherit.aes = FALSE)
     }
@@ -654,7 +727,7 @@ plot_chromosome_matching_heatmap <- function(data,
   # Print summary statistics
   cat("\n=== Chromosome Matching Summary for", target_chr, "===\n")
   cat("Position range:", round(start_mbp, 2), "-", round(end_mbp, 2), "Mbp\n")
-  cat("Number of windows:", nrow(chr_data), "\n")
+  cat("Number of windows:", nrow(chr_data_filtered), "\n")
   
   # Calculate matching frequency
   match_freq <- colSums(chr_binary)
@@ -668,61 +741,68 @@ plot_chromosome_matching_heatmap <- function(data,
       cat(sprintf("  %s: %d windows (%.1f%%)\n", 
                   names(top_matches)[i], 
                   top_matches[i], 
-                  100 * top_matches[i] / nrow(chr_data)))
+                  100 * top_matches[i] / nrow(chr_data_filtered)))
     }
   }
   
   # If BED regions exist, summarize matches within them
   if (!is.null(bed_regions) && highlight_regions) {
+    input_start <- start_mbp
+    input_end <- end_mbp
+    
     chr_bed <- bed_regions %>% 
       filter(chromosome == target_chr) %>%
-      filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
+      filter(end_mbp >= input_start & start_mbp <= input_end)
     
     if (nrow(chr_bed) > 0) {
       cat("\n--- Matches within annotated regions ---\n")
       for(i in 1:nrow(chr_bed)) {
-        region_data <- chr_data %>%
-          filter(position >= chr_bed$start_mbp[i] & 
-                   position <= chr_bed$end_mbp[i])
+        # Use the actual region boundaries (not clipped) for data filtering
+        region_start <- max(chr_bed$start_mbp[i], input_start)
+        region_end <- min(chr_bed$end_mbp[i], input_end)
+        
+        region_data <- chr_data_filtered %>%
+          filter(position >= region_start & position <= region_end)
         
         if(nrow(region_data) > 0) {
           all_chroms_in_region <- unlist(strsplit(region_data$chromosomes, ","))
           all_chroms_in_region <- trimws(all_chroms_in_region)
-          chrom_freq_region <- table(all_chroms_in_region)
-          chrom_freq_region <- sort(chrom_freq_region, decreasing = TRUE)
+          all_chroms_in_region <- all_chroms_in_region[!is.na(all_chroms_in_region)]
           
-          cat("\n", chr_bed$name[i], " (", round(chr_bed$start_mbp[i], 2), 
-              "-", round(chr_bed$end_mbp[i], 2), " Mbp):\n", sep="")
-          
-          top_in_region <- head(chrom_freq_region, 5)
-          for(j in 1:length(top_in_region)) {
-            cat(sprintf("    %s: %d occurrences\n", 
-                        names(top_in_region)[j], 
-                        top_in_region[j]))
+          if(length(all_chroms_in_region) > 0) {
+            chrom_freq_region <- table(all_chroms_in_region)
+            chrom_freq_region <- sort(chrom_freq_region, decreasing = TRUE)
+            
+            cat("\n", chr_bed$name[i], " (", round(region_start, 2), 
+                "-", round(region_end, 2), " Mbp):\n", sep="")
+            
+            top_in_region <- head(chrom_freq_region, 5)
+            for(j in 1:length(top_in_region)) {
+              cat(sprintf("    %s: %d occurrences\n", 
+                          names(top_in_region)[j], 
+                          top_in_region[j]))
+            }
           }
         }
       }
     }
   }
-  
-  # Save plot if requested
-  if (save_plot) {
-    if (is.null(output_filename)) {
-      output_filename <- paste0("heatmap_", target_chr, "_", 
-                                round(start_mbp), "-", round(end_mbp), 
-                                "Mbp.pdf")
-    }
-    ggsave(output_filename, p_heatmap, width = 12, height = 8, dpi = 300)
-    cat("\nPlot saved to:", output_filename, "\n")
-  }
-  
+
   return(p_heatmap)
 }
 
-p1 <- plot_chromosome_matching_heatmap(data, 
-                                       target_chr = "chrY",
-                                       bed_regions = bed_regions)
-print(p1)
+plot_single_chromosome(data, 
+                       target_chr = "chrY", 
+                       start_mbp = 0, 
+                       end_mbp = 999,
+                       bed_regions = bed_regions)
+
+plot_chromosome_matching_heatmap(data, 
+                                 target_chr = "chrM",
+                                 #start_mbp = 11,
+                                 #end_mbp = 12,
+                                 bed_regions = bed_regions)
+
 
 # Loop through all chromosomes and save heatmaps
 for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
@@ -734,84 +814,378 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Extract chrY data and parse the chromosomes column
-chrY_data <- data %>%
-  filter(chromosome == "chrY") %>%
-  mutate(position = (start + end) / 2 / 1e6)
-
-# Parse the comma-separated chromosomes list into a binary matrix
-parse_chromosomes_binary <- function(data) {
-  # Get all possible chromosomes
-  all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+plot_chromosome_matching_heatmap2 <- function(data, 
+                                             target_chr = "chr1", 
+                                             start_mbp = NULL, 
+                                             end_mbp = NULL,
+                                             bed_regions = NULL,
+                                             highlight_regions = TRUE,
+                                             show_numbers = "auto",  # "auto", "always", "never"
+                                             number_threshold = 30,  # max windows to show numbers
+                                             output_filename = NULL) {
   
-  # Initialize binary matrix
-  binary_matrix <- matrix(0, 
-                          nrow = nrow(data), 
-                          ncol = length(all_chroms),
-                          dimnames = list(NULL, all_chroms))
+  # Filter for the target chromosome
+  chr_data <- data %>%
+    filter(chromosome == target_chr) %>%
+    mutate(position = (start + end) / 2 / 1e6)
   
-  # Fill in the binary matrix
-  for(i in 1:nrow(data)) {
-    if(!is.na(data$chromosomes[i])) {
-      # Split the comma-separated list
-      chroms_list <- strsplit(data$chromosomes[i], ",")[[1]]
-      # Mark present chromosomes as 1
-      for(chr in chroms_list) {
-        chr_clean <- trimws(chr)
-        if(chr_clean %in% all_chroms) {
-          binary_matrix[i, chr_clean] <- 1
+  # Check if data exists for this chromosome
+  if (nrow(chr_data) == 0) {
+    warning(paste("No data found for chromosome:", target_chr))
+    return(NULL)
+  }
+  
+  # Get actual data range
+  data_min <- min(chr_data$position)
+  data_max <- max(chr_data$position)
+  
+  # Set position range with defaults
+  if (is.null(start_mbp)) {
+    start_mbp <- data_min
+  } else {
+    # Ensure start_mbp is within data range
+    if (start_mbp < data_min) {
+      message(paste0("Adjusting start from ", start_mbp, " to data minimum ", round(data_min, 2), " Mbp"))
+      start_mbp <- data_min
+    }
+    if (start_mbp > data_max) {
+      warning(paste0("start_mbp (", start_mbp, ") is beyond data range. Using data minimum."))
+      start_mbp <- data_min
+    }
+  }
+  
+  if (is.null(end_mbp)) {
+    end_mbp <- data_max
+  } else {
+    # Ensure end_mbp is within data range
+    if (end_mbp > data_max) {
+      message(paste0("Adjusting end from ", end_mbp, " to data maximum ", round(data_max, 2), " Mbp"))
+      end_mbp <- data_max
+    }
+    if (end_mbp < data_min) {
+      warning(paste0("end_mbp (", end_mbp, ") is before data range. Using data maximum."))
+      end_mbp <- data_max
+    }
+  }
+  
+  # Validate that start < end
+  if (start_mbp >= end_mbp) {
+    warning("start_mbp must be less than end_mbp. Swapping values.")
+    temp <- start_mbp
+    start_mbp <- end_mbp
+    end_mbp <- temp
+  }
+  
+  # Filter by position range
+  chr_data_filtered <- chr_data %>%
+    filter(position >= start_mbp & position <= end_mbp)
+  
+  if (nrow(chr_data_filtered) == 0) {
+    warning(paste0("No data in specified range [", round(start_mbp, 2), ", ", round(end_mbp, 2), "] Mbp"))
+    return(NULL)
+  }
+  
+  # Parse the chroms-num_haplotypes column to get actual counts
+  parse_chromosomes_counts <- function(data) {
+    # Get all possible chromosomes
+    all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+    
+    # Initialize count matrix
+    count_matrix <- matrix(0, 
+                           nrow = nrow(data), 
+                           ncol = length(all_chroms),
+                           dimnames = list(NULL, all_chroms))
+    
+    # Fill in the count matrix
+    for(i in 1:nrow(data)) {
+      if(!is.na(data$`chroms-num_haplotypes`[i]) && data$`chroms-num_haplotypes`[i] != "") {
+        # Split the comma-separated list
+        pairs <- strsplit(data$`chroms-num_haplotypes`[i], ",")[[1]]
+        
+        # Parse each pair to get chromosome and count
+        for(pair in pairs) {
+          # Split by the last hyphen to separate chromosome from count
+          parts <- strsplit(trimws(pair), "-")[[1]]
+          if(length(parts) >= 2) {
+            # The chromosome is everything except the last part
+            chr_name <- paste(parts[-length(parts)], collapse = "-")
+            # The count is the last part
+            count <- as.numeric(parts[length(parts)])
+            
+            if(chr_name %in% all_chroms && !is.na(count)) {
+              count_matrix[i, chr_name] <- count
+            }
+          }
+        }
+      }
+    }
+    
+    return(count_matrix)
+  }
+  
+  # Create count matrix
+  chr_counts <- parse_chromosomes_counts(chr_data_filtered)
+  
+  # Combine with position data for plotting
+  chr_heatmap_data <- cbind(chr_data_filtered %>% select(position), chr_counts) %>%
+    as.data.frame() %>%
+    pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "count")
+  
+  # Determine whether to show numbers
+  show_text <- FALSE
+  if (show_numbers == "always") {
+    show_text <- TRUE
+  } else if (show_numbers == "auto") {
+    # Show numbers if we have 30 or fewer windows
+    show_text <- nrow(chr_data_filtered) <= number_threshold
+  }
+  
+  # Calculate appropriate x-axis breaks based on the range
+  x_range <- end_mbp - start_mbp
+  if (x_range <= 5) {
+    x_breaks <- seq(floor(start_mbp*2)/2, ceiling(end_mbp*2)/2, by = 0.5)
+  } else if (x_range <= 10) {
+    x_breaks <- seq(floor(start_mbp), ceiling(end_mbp), by = 1)
+  } else if (x_range <= 50) {
+    x_breaks <- seq(floor(start_mbp/5)*5, ceiling(end_mbp/5)*5, by = 5)
+  } else if (x_range <= 100) {
+    x_breaks <- seq(floor(start_mbp/10)*10, ceiling(end_mbp/10)*10, by = 10)
+  } else {
+    x_breaks <- seq(floor(start_mbp/50)*50, ceiling(end_mbp/50)*50, by = 50)
+  }
+  
+  # Filter to ensure breaks are within the actual range
+  x_breaks <- x_breaks[x_breaks >= start_mbp & x_breaks <= end_mbp]
+  
+  # Get the maximum count for color scale
+  max_count <- max(chr_heatmap_data$count, na.rm = TRUE)
+  
+  # Create custom color scale
+  # White for 0, then a gradient from a visible blue to dark blue
+  if (max_count > 0) {
+    # Create breaks for the color scale
+    if (max_count == 1) {
+      color_breaks <- c(0, 1)
+      color_values <- c(0, 1)
+      colors <- c("white", "#2166ac")
+    } else {
+      # Create a color scale that starts at 0 (white) and has visible colors for values > 0
+      color_breaks <- c(0, 1, max_count)
+      color_values <- c(0, 0.4, 1)  # 0 maps to white, 1 maps to 40% of the gradient, max to 100%
+      colors <- c("white", "#6baed6", "#08306b")
+    }
+  } else {
+    colors <- c("white", "white")
+    color_breaks <- c(0, 1)
+    color_values <- c(0, 1)
+  }
+  
+  # Create the heatmap
+  p_heatmap <- ggplot(chr_heatmap_data, 
+                      aes(x = position, y = matching_chromosome, fill = count))
+  
+  # Add the tile layer
+  p_heatmap <- p_heatmap + geom_tile()
+  
+  # Add text labels if appropriate
+  if (show_text) {
+    # Create a subset with only non-zero values for text
+    text_data <- chr_heatmap_data %>%
+      filter(count > 0)
+    
+    p_heatmap <- p_heatmap +
+      geom_text(data = text_data,
+                aes(x = position, y = matching_chromosome, label = count),
+                color = "white", size = 2.5, fontface = "bold")
+  }
+  
+  # Apply color scale
+  if (max_count > 0) {
+    p_heatmap <- p_heatmap +
+      scale_fill_gradientn(
+        colors = colors,
+        values = color_values,
+        breaks = pretty(c(0, max_count), n = 5),
+        limits = c(0, max_count),
+        name = "Haplotype\nCount",
+        na.value = "white"
+      )
+  } else {
+    p_heatmap <- p_heatmap +
+      scale_fill_gradient(low = "white", high = "white", 
+                          name = "Haplotype\nCount",
+                          limits = c(0, 1))
+  }
+  
+  p_heatmap <- p_heatmap +
+    scale_x_continuous(expand = c(0, 0), 
+                       limits = c(start_mbp, end_mbp),
+                       breaks = x_breaks) +
+    scale_y_discrete(limits = rev(paste0("chr", c(1:22, "X", "Y", "M")))) +
+    labs(
+      title = paste0("Chromosome Matching Pattern for ", target_chr, 
+                     " (", round(start_mbp, 1), "-", round(end_mbp, 1), " Mbp)"),
+      subtitle = paste0("100kb windows (", nrow(chr_data_filtered), 
+                        " windows, max ", max_count, " haplotypes",
+                        ifelse(show_text, ", showing counts", ""), ")"),
+      x = paste0("Position on ", target_chr, " (Mbp)"),
+      y = "Matching Chromosome"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 8),
+      axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5, color = "gray40"),
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA),
+      legend.position = "right",
+      legend.key.height = unit(1, "cm"),
+      legend.title = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9)
+    )
+  
+  # Add BED region annotations if provided
+  if (!is.null(bed_regions) && highlight_regions) {
+    # Store the input parameters with different names to avoid naming conflicts
+    input_start <- start_mbp
+    input_end <- end_mbp
+    
+    chr_bed <- bed_regions %>% 
+      filter(chromosome == target_chr) %>%
+      # Filter for regions that overlap with the specified range
+      filter(end_mbp >= input_start & start_mbp <= input_end) %>%
+      # Clip the regions to the specified range
+      mutate(
+        start_mbp_clipped = pmax(start_mbp, input_start),
+        end_mbp_clipped = pmin(end_mbp, input_end),
+        mid_pos = (start_mbp_clipped + end_mbp_clipped) / 2
+      )
+    
+    if (nrow(chr_bed) > 0) {
+      # Add vertical lines for region boundaries
+      p_heatmap <- p_heatmap +
+        geom_vline(data = chr_bed, aes(xintercept = start_mbp_clipped), 
+                   color = "red", linetype = "dashed", alpha = 0.7, size = 0.5) +
+        geom_vline(data = chr_bed, aes(xintercept = end_mbp_clipped), 
+                   color = "red", linetype = "dashed", alpha = 0.7, size = 0.5)
+      
+      # Add region labels at the top
+      # Calculate y position for labels (above the heatmap)
+      y_label_pos <- length(paste0("chr", c(1:22, "X", "Y", "M"))) + 0.5
+      
+      p_heatmap <- p_heatmap +
+        geom_text(data = chr_bed,
+                  aes(x = mid_pos, y = y_label_pos, label = name),
+                  angle = 0, vjust = 0, size = 3, color = "red",
+                  inherit.aes = FALSE)
+    }
+  }
+  
+  # Print summary statistics
+  cat("\n=== Chromosome Matching Summary for", target_chr, "===\n")
+  cat("Position range:", round(start_mbp, 2), "-", round(end_mbp, 2), "Mbp\n")
+  cat("Number of windows:", nrow(chr_data_filtered), "\n")
+  cat("Maximum haplotype count:", max_count, "\n")
+  if (show_text) {
+    cat("Showing count numbers in cells\n")
+  }
+  
+  # Calculate total haplotypes per chromosome
+  haplo_totals <- colSums(chr_counts)
+  haplo_totals <- haplo_totals[haplo_totals > 0]
+  haplo_totals <- sort(haplo_totals, decreasing = TRUE)
+  
+  cat("\nTop matching chromosomes (by total haplotype count):\n")
+  if (length(haplo_totals) > 0) {
+    top_matches <- head(haplo_totals, 10)
+    for(i in 1:length(top_matches)) {
+      # Also calculate how many windows have matches
+      windows_with_match <- sum(chr_counts[, names(top_matches)[i]] > 0)
+      avg_haplo <- round(top_matches[i] / windows_with_match, 1)
+      
+      cat(sprintf("  %s: %d total haplotypes across %d windows (avg %.1f per window)\n", 
+                  names(top_matches)[i], 
+                  top_matches[i],
+                  windows_with_match,
+                  avg_haplo))
+    }
+  }
+  
+  # If BED regions exist, summarize matches within them
+  if (!is.null(bed_regions) && highlight_regions) {
+    input_start <- start_mbp
+    input_end <- end_mbp
+    
+    chr_bed <- bed_regions %>% 
+      filter(chromosome == target_chr) %>%
+      filter(end_mbp >= input_start & start_mbp <= input_end)
+    
+    if (nrow(chr_bed) > 0) {
+      cat("\n--- Matches within annotated regions ---\n")
+      for(i in 1:nrow(chr_bed)) {
+        # Use the actual region boundaries (not clipped) for data filtering
+        region_start <- max(chr_bed$start_mbp[i], input_start)
+        region_end <- min(chr_bed$end_mbp[i], input_end)
+        
+        region_indices <- which(chr_data_filtered$position >= region_start & 
+                                  chr_data_filtered$position <= region_end)
+        
+        if(length(region_indices) > 0) {
+          # Get counts for this region
+          region_counts <- chr_counts[region_indices, , drop = FALSE]
+          region_totals <- colSums(region_counts)
+          region_totals <- region_totals[region_totals > 0]
+          region_totals <- sort(region_totals, decreasing = TRUE)
+          
+          cat("\n", chr_bed$name[i], " (", round(region_start, 2), 
+              "-", round(region_end, 2), " Mbp, ", 
+              length(region_indices), " windows):\n", sep="")
+          
+          if(length(region_totals) > 0) {
+            top_in_region <- head(region_totals, 5)
+            for(j in 1:length(top_in_region)) {
+              windows_with_match <- sum(region_counts[, names(top_in_region)[j]] > 0)
+              cat(sprintf("    %s: %d haplotypes in %d windows\n", 
+                          names(top_in_region)[j], 
+                          top_in_region[j],
+                          windows_with_match))
+            }
+          } else {
+            cat("    No matches in this region\n")
+          }
         }
       }
     }
   }
   
-  return(binary_matrix)
+  return(p_heatmap)
 }
 
-# Create binary matrix for chrY
-chrY_binary <- parse_chromosomes_binary(chrY_data)
+# Full chromosome with gradient (no numbers shown due to many windows)
+plot_chromosome_matching_heatmap2(data, 
+                                 target_chr = "chrM",
+                                 bed_regions = NULL)
 
-# Combine with position data for plotting
-chrY_heatmap_data <- cbind(chrY_data %>% select(position), chrY_binary) %>%
-  as.data.frame() %>%
-  pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "present")
+# Zoomed region with automatic number display (if <= 30 windows)
+plot_chromosome_matching_heatmap2(data, 
+                                 target_chr = "chrY",
+                                 start_mbp = 10,
+                                 end_mbp = 13,  # ~30 windows at 100kb each
+                                 bed_regions = bed_regions)
 
-# Create the binary heatmap
-p_chrY_heatmap <- ggplot(chrY_heatmap_data, 
-                         aes(x = position, y = matching_chromosome, fill = factor(present))) +
-  geom_tile() +
-  scale_fill_manual(values = c("0" = "white", "1" = "darkblue"),
-                    labels = c("No match", "Match"),
-                    name = "Status") +
-  scale_x_continuous(expand = c(0, 0), breaks = seq(0, 60, 10)) +
-  scale_y_discrete(limits = rev(paste0("chr", c(1:22, "X", "Y", "M")))) +
-  labs(
-    title = "Chromosome Matching Pattern for chrY (100kb windows)",
-    x = "Position on chrY (Mbp)",
-    y = "Matching Chromosome"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.y = element_text(size = 8),
-    axis.text.x = element_text(size = 10),
-    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-    panel.grid = element_blank(),
-    panel.border = element_rect(color = "black", fill = NA),
-    legend.position = "right"
-  )
+# Force showing numbers regardless of window count
+plot_chromosome_matching_heatmap2(data, 
+                                 target_chr = "chr1",
+                                 start_mbp = 120,
+                                 end_mbp = 125,
+                                 bed_regions = bed_regions,
+                                 show_numbers = "always")
 
-
-print(p_chrY_heatmap)
+# Never show numbers even when zoomed in
+plot_chromosome_matching_heatmap2(data, 
+                                 target_chr = "chr1",
+                                 start_mbp = 120,
+                                 end_mbp = 122,
+                                 bed_regions = bed_regions,
+                                 show_numbers = "never")
