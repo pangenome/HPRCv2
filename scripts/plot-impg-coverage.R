@@ -38,7 +38,8 @@ bed_regions <- read_bed_regions(bed_file_path) %>%
   filter(name != 'PHR-sex') %>%
   mutate(name = if_else(name == 'PHR-acro', 'PHR', name)) %>%
   mutate(name = if_else(name %in% c('PAR1', 'PAR2'), 'PAR', name)) %>%
-  mutate(name = if_else(name %in% c('XTR1', 'XTR2'), 'XTR', name))
+  mutate(name = if_else(name %in% c('XTR1', 'XTR2'), 'XTR', name)) %>%
+  mutate(name = if_else(name == 'Centromere', 'CEN', name))
 
 # Create color palette for BED regions if they exist
 if (!is.null(bed_regions)) {
@@ -140,9 +141,10 @@ data_alignments <- data %>%
 # Create a more informative legend for alignments
 data_alignments$metric <- factor(data_alignments$metric,
                                  levels = c("num_alignments", "num_alignments_merged"),
-                                 labels = c("Alignments", "Alignments Merged"))
+                                 labels = c("Alignments not merged", "Alignments"))
 
-#data_alignments <- data_alignments %>% filter(metric == "Alignments Merged")
+# Hide not merged alignments
+data_alignments <- data_alignments %>% filter(metric == "Alignments")
 
 # Create combined alignments plot with BED regions
 p_combined_alignments <- ggplot(data_alignments, aes(x = position, y = value, color = metric, group = metric))
@@ -155,7 +157,7 @@ if (!is.null(bed_regions)) {
               inherit.aes = FALSE,
               #fill = "grey50",
               alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region Type")
+    scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_alignments <- p_combined_alignments +
@@ -164,7 +166,8 @@ p_combined_alignments <- p_combined_alignments +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
-  scale_color_manual(values = c("blue", "red")) +
+  scale_color_manual(values = c("black", "red")) +
+  guides(color = "none") +  # To hide the Metric legend
   labs(
     title = paste0("Alignments across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
@@ -208,7 +211,7 @@ if (!is.null(bed_regions)) {
               inherit.aes = FALSE,
               #fill = "grey50",
               alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region Type")
+    scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_haplo_samples <- p_combined_haplo_samples +
@@ -287,7 +290,7 @@ if (!is.null(bed_regions)) {
               inherit.aes = FALSE,
               #fill = "grey50",
               alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region Type")
+    scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_num_chromosomes <- p_num_chromosomes +
@@ -297,9 +300,9 @@ p_num_chromosomes <- p_num_chromosomes +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
                      expand = expansion(mult = c(0.09, 0.15))) +
   labs(
-    title = paste0("Number of Unique Chromosomes per Region across CHM13 (", window_size, "windows)"),
+    title = paste0("Number of unique chromosomes per region across CHM13 (", window_size, "windows)"),
     x = "Position (Mbp)",
-    y = "Number of Chromosomes"
+    y = "Number of chromosomes"
   ) +
   theme_minimal() +
   theme(
@@ -309,7 +312,8 @@ p_num_chromosomes <- p_num_chromosomes +
     plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
     axis.text = element_text(size = 11),
     axis.title = element_text(size = 14),
-    legend.position = "bottom"
+    legend.position = "bottom",
+    legend.title = element_text(size = 15, face = "bold")
   ) +
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.7)
 
@@ -324,7 +328,7 @@ if (!is.null(bed_regions)) {
               inherit.aes = FALSE,
               #fill = "grey50",
               alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region Type")
+    scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_num_chromosomes_wide <- p_num_chromosomes_wide +
@@ -345,9 +349,9 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.5, linewidth = 0.3) +
   
   labs(
-    title = paste0("Number of Unique Chromosomes per Region across CHM13 (", window_size, " windows)"),
+    title = paste0("Number of unique chromosomes per region across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
-    y = "Number of Chromosomes"
+    y = "Number of chromosomes"
   ) +
   
   theme_minimal() +
@@ -365,7 +369,8 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
     panel.grid.major.x = element_blank(),
     panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
     panel.spacing = unit(0.05, "lines"),
-    legend.position = "right"
+    legend.position = "right",
+    legend.title = element_text(size = 15, face = "bold")
   )
 
 # Print summary of BED regions if loaded
@@ -496,7 +501,7 @@ plot_single_chromosome <- function(data,
     
     # Add color scale if bed_colors provided
     if (exists("bed_colors")) {
-      p <- p + scale_fill_manual(values = bed_colors, name = "Region Type")
+      p <- p + scale_fill_manual(values = bed_colors, name = "Region")
     }
   }
   
