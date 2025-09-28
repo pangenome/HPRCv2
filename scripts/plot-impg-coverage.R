@@ -34,7 +34,11 @@ read_bed_regions <- function(bed_path) {
 }
 
 # Read the BED file
-bed_regions <- read_bed_regions(bed_file_path)
+bed_regions <- read_bed_regions(bed_file_path) %>%
+  filter(name != 'PHR-sex') %>%
+  mutate(name = if_else(name == 'PHR-acro', 'PHR', name)) %>%
+  mutate(name = if_else(name %in% c('PAR1', 'PAR2'), 'PAR', name)) %>%
+  mutate(name = if_else(name %in% c('XTR1', 'XTR2'), 'XTR', name))
 
 # Create color palette for BED regions if they exist
 if (!is.null(bed_regions)) {
@@ -44,8 +48,8 @@ if (!is.null(bed_regions)) {
   # Create a color palette - you can customize these colors
   # Using a colorblind-friendly palette
   if (n_labels <= 8) {
-    bed_colors <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", 
-                    "#0072B2", "#D55E00", "#CC79A7", "#999999")[1:n_labels]
+    bed_colors <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", 
+                    "#0072B2", "#D55E00", "#CC79A7")[1:n_labels]
   } else {
     # For more than 8 labels, use a larger palette
     bed_colors <- scales::hue_pal()(n_labels)
@@ -61,9 +65,10 @@ if (!is.null(bed_regions)) {
 }
 
 # Read the data
+window_size <- '100kb'
 num_haplo <- 466
 num_sample <- 234
-data <- read_tsv("/home/guarracino/Desktop/hprc25272.CHM13.w100k-xm3-id095-l3000.tsv.gz")
+data <- read_tsv(paste0("/home/guarracino/Desktop/hprc25272.CHM13.w", window_size, "-xm5-id095-l5k.tsv.gz"))
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -161,7 +166,7 @@ p_combined_alignments <- p_combined_alignments +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
   scale_color_manual(values = c("blue", "red")) +
   labs(
-    title = "Alignments across CHM13 (100kbp windows)",
+    title = paste0("Alignments across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
     y = "Count (log10)",
     color = "Metric"
@@ -214,7 +219,7 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
                      expand = expansion(mult = c(0.09, 0.15))) +
   scale_color_manual(values = c("darkgreen", "purple")) +
   labs(
-    title = "Samples/Haplotypes across CHM13 (100kbp windows)",
+    title = paste0("Samples/Haplotypes across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
     y = "Count",
     color = "Metric"
@@ -292,7 +297,7 @@ p_num_chromosomes <- p_num_chromosomes +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
                      expand = expansion(mult = c(0.09, 0.15))) +
   labs(
-    title = "Number of Unique Chromosomes per Region across CHM13 (100kbp windows)",
+    title = paste0("Number of Unique Chromosomes per Region across CHM13 (", window_size, "windows)"),
     x = "Position (Mbp)",
     y = "Number of Chromosomes"
   ) +
@@ -340,7 +345,7 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.5, linewidth = 0.3) +
   
   labs(
-    title = "Number of Unique Chromosomes per Region across CHM13 (100kb windows)",
+    title = paste0("Number of Unique Chromosomes per Region across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
     y = "Number of Chromosomes"
   ) +
@@ -672,7 +677,7 @@ plot_chromosome_matching_heatmap <- function(data,
     labs(
       title = paste0("Chromosome Matching Pattern for ", target_chr, 
                      " (", round(start_mbp, 1), "-", round(end_mbp, 1), " Mbp)"),
-      subtitle = paste0("100kb windows (", nrow(chr_data_filtered), " windows in range)"),
+      subtitle = paste0(window_size, " windows (", nrow(chr_data_filtered), " windows in range)"),
       x = paste0("Position on ", target_chr, " (Mbp)"),
       y = "Matching Chromosome"
     ) +
@@ -1025,7 +1030,7 @@ plot_chromosome_matching_heatmap2 <- function(data,
     labs(
       title = paste0("Chromosome Matching Pattern for ", target_chr, 
                      " (", round(start_mbp, 1), "-", round(end_mbp, 1), " Mbp)"),
-      subtitle = paste0("100kb windows (", nrow(chr_data_filtered), 
+      subtitle = paste0(window_size, " windows (", nrow(chr_data_filtered), 
                         " windows, max ", max_count, " haplotypes",
                         ifelse(show_text, ", showing counts", ""), ")"),
       x = paste0("Position on ", target_chr, " (Mbp)"),
@@ -1171,7 +1176,7 @@ plot_chromosome_matching_heatmap2(data,
 plot_chromosome_matching_heatmap2(data, 
                                  target_chr = "chrY",
                                  start_mbp = 10,
-                                 end_mbp = 13,  # ~30 windows at 100kb each
+                                 end_mbp = 13,
                                  bed_regions = bed_regions)
 
 # Force showing numbers regardless of window count
