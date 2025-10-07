@@ -66,10 +66,10 @@ if (!is.null(bed_regions)) {
 }
 
 # Read the data
-window_size <- '100kb'
+window_size <- '1kb'
 num_haplo <- 466
 num_sample <- 234
-data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272.CHM13.w", window_size, "-xm5-id098-l5k.tsv.gz"))
+data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272.CHM13.w", window_size, "-xm5-id098-l800.tsv.gz"))
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -846,22 +846,39 @@ plot_chromosome_matching_heatmap2 <- function(data,
     show_text <- nrow(chr_data_filtered) <= number_threshold
   }
   
-  # Calculate appropriate x-axis breaks based on the range
+  # Calculate appropriate x-axis breaks to ensure at least 20 ticks
   x_range <- end_mbp - start_mbp
-  if (x_range <= 5) {
-    x_breaks <- seq(floor(start_mbp*2)/2, ceiling(end_mbp*2)/2, by = 0.5)
-  } else if (x_range <= 10) {
-    x_breaks <- seq(floor(start_mbp), ceiling(end_mbp), by = 1)
-  } else if (x_range <= 50) {
-    x_breaks <- seq(floor(start_mbp/5)*5, ceiling(end_mbp/5)*5, by = 5)
-  } else if (x_range <= 100) {
-    x_breaks <- seq(floor(start_mbp/10)*10, ceiling(end_mbp/10)*10, by = 10)
-  } else {
-    x_breaks <- seq(floor(start_mbp/50)*50, ceiling(end_mbp/50)*50, by = 50)
+  desired_min_ticks <- 20
+  
+  # Calculate initial spacing
+  initial_spacing <- x_range / desired_min_ticks
+  
+  # Round to a nice number (prefer: 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50)
+  nice_spacings <- c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50)
+  tick_spacing <- nice_spacings[which.min(abs(nice_spacings - initial_spacing))]
+  
+  # If the selected spacing gives us fewer than 20 ticks, use the next smaller spacing
+  while (x_range / tick_spacing < desired_min_ticks && tick_spacing > min(nice_spacings)) {
+    current_idx <- which(nice_spacings == tick_spacing)
+    if (current_idx > 1) {
+      tick_spacing <- nice_spacings[current_idx - 1]
+    } else {
+      break
+    }
   }
+  
+  # Generate breaks
+  x_breaks <- seq(
+    floor(start_mbp / tick_spacing) * tick_spacing,
+    ceiling(end_mbp / tick_spacing) * tick_spacing,
+    by = tick_spacing
+  )
   
   # Filter to ensure breaks are within the actual range
   x_breaks <- x_breaks[x_breaks >= start_mbp & x_breaks <= end_mbp]
+  
+  cat(sprintf("X-axis: Using tick spacing of %.3f Mbp (%d ticks)\n", 
+              tick_spacing, length(x_breaks)))
   
   # Get the maximum count for color scale
   max_count <- max(chr_heatmap_data$count, na.rm = TRUE)
@@ -1194,20 +1211,39 @@ plot_chromosome_identity_heatmap <- function(data,
     show_text <- nrow(chr_data_filtered) <= number_threshold
   }
   
-  # Calculate x-axis breaks
+  # Calculate appropriate x-axis breaks to ensure at least 20 ticks
   x_range <- end_mbp - start_mbp
-  if (x_range <= 5) {
-    x_breaks <- seq(floor(start_mbp*2)/2, ceiling(end_mbp*2)/2, by = 0.5)
-  } else if (x_range <= 10) {
-    x_breaks <- seq(floor(start_mbp), ceiling(end_mbp), by = 1)
-  } else if (x_range <= 50) {
-    x_breaks <- seq(floor(start_mbp/5)*5, ceiling(end_mbp/5)*5, by = 5)
-  } else if (x_range <= 100) {
-    x_breaks <- seq(floor(start_mbp/10)*10, ceiling(end_mbp/10)*10, by = 10)
-  } else {
-    x_breaks <- seq(floor(start_mbp/50)*50, ceiling(end_mbp/50)*50, by = 50)
+  desired_min_ticks <- 20
+  
+  # Calculate initial spacing
+  initial_spacing <- x_range / desired_min_ticks
+  
+  # Round to a nice number (prefer: 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50)
+  nice_spacings <- c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50)
+  tick_spacing <- nice_spacings[which.min(abs(nice_spacings - initial_spacing))]
+  
+  # If the selected spacing gives us fewer than 20 ticks, use the next smaller spacing
+  while (x_range / tick_spacing < desired_min_ticks && tick_spacing > min(nice_spacings)) {
+    current_idx <- which(nice_spacings == tick_spacing)
+    if (current_idx > 1) {
+      tick_spacing <- nice_spacings[current_idx - 1]
+    } else {
+      break
+    }
   }
+  
+  # Generate breaks
+  x_breaks <- seq(
+    floor(start_mbp / tick_spacing) * tick_spacing,
+    ceiling(end_mbp / tick_spacing) * tick_spacing,
+    by = tick_spacing
+  )
+  
+  # Filter to ensure breaks are within the actual range
   x_breaks <- x_breaks[x_breaks >= start_mbp & x_breaks <= end_mbp]
+  
+  cat(sprintf("X-axis: Using tick spacing of %.3f Mbp (%d ticks)\n", 
+              tick_spacing, length(x_breaks)))
   
   # Create the heatmap
   p_heatmap <- ggplot(chr_heatmap_data, 
@@ -1257,7 +1293,7 @@ plot_chromosome_identity_heatmap <- function(data,
       labels = function(x) sprintf("%.3f", x)
     ) +
     scale_x_continuous(
-      expand = expansion(mult = c(0.02, 0.02)),  # FIX: Add 2% padding on both sides
+      expand = expansion(mult = c(0.02, 0.02)),  # Add 2% padding on both sides
       limits = c(start_mbp, end_mbp),
       breaks = x_breaks
     ) +
@@ -1354,7 +1390,7 @@ plot_single_chromosome(data,
 plot_chromosome_matching_heatmap(data, 
                                  target_chr = "chr1",
                                  start_mbp = 0, 
-                                 end_mbp = 5,
+                                 end_mbp = 0.3,
                                  )
 
 # Haplotype count heatmap - full chromosome
@@ -1386,7 +1422,7 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
   if (!is.null(p)) {
     print(p)
     ggsave(
-      filename = paste0("identity_heatmap_", chr, ".pdf"),
+      filename = paste0(chr, ".identity_heatmap.pdf"),
       plot = p,
       width = 16,
       height = 4,
@@ -1396,15 +1432,15 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
     )
   }
   
-  # First megabase (0-1 Mbp)
+  # First x Mbp
   p <- plot_chromosome_identity_heatmap(data, 
                                         target_chr = chr,
                                         start_mbp = 0,
-                                        end_mbp = 1)
+                                        end_mbp = 0.3)
   if (!is.null(p)) {
     print(p)
     ggsave(
-      filename = paste0("identity_heatmap_", chr, ".zoom_0-1.pdf"),
+      filename = paste0(chr, ".zoom_0-03Mb.identity-heatmap.pdf"),
       plot = p,
       width = 16,
       height = 4,
@@ -1414,7 +1450,24 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
     )
   }
   
-  # Last megabase
+  p <- plot_chromosome_matching_heatmap2(data, 
+                                        target_chr = chr,
+                                        start_mbp = 0,
+                                        end_mbp = 0.3)
+  if (!is.null(p)) {
+    print(p)
+    ggsave(
+      filename = paste0(chr, ".zoom_0-03Mb.haplotype-heatmap.pdf"),
+      plot = p,
+      width = 16,
+      height = 4,
+      dpi = 300,
+      units = "in",
+      bg = "white"
+    )
+  }
+  
+  # Last x Mbp
   # Get the maximum position for this chromosome
   chr_max <- data %>%
     filter(chromosome == chr) %>%
@@ -1424,12 +1477,29 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
   if (chr_max >= 1) {
     p <- plot_chromosome_identity_heatmap(data, 
                                           target_chr = chr,
-                                          start_mbp = chr_max - 1,
+                                          start_mbp = chr_max - 0.3,
                                           end_mbp = chr_max)
     if (!is.null(p)) {
       print(p)
       ggsave(
-        filename = paste0("identity_heatmap_", chr, ".zoom_last1mb.pdf"),
+        filename = paste0(chr, ".zoom_last03mb.identity-heatmap.pdf"),
+        plot = p,
+        width = 16,
+        height = 4,
+        dpi = 300,
+        units = "in",
+        bg = "white"
+      )
+    }
+    
+    p <- plot_chromosome_matching_heatmap2(data, 
+                                           target_chr = chr,
+                                           start_mbp = chr_max - 0.3,
+                                           end_mbp = chr_max)
+    if (!is.null(p)) {
+      print(p)
+      ggsave(
+        filename = paste0(chr, ".zoom_last03mb.haplotype-heatmap.pdf"),
         plot = p,
         width = 16,
         height = 4,
