@@ -10,15 +10,10 @@ Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang
 
 ## Implicit pangenome graph
 
-Get the IMPG index generated with [IMPG](https://github.com/pangenome/impg):
-- 25221 pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc25272.aln.paf.gz.impg
-- 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc465vschm13.aln.paf.gz.impg
-- 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/impg/hprc465vsgrch38.aln.paf.gz.impg
-
-We built the IMPG indexes with the following commands:
+Build the IMPG indexes with the following commands:
 
 ```bash
-impg index -p hprc25272.aln.paf.gz
+impg index -p hprc25272.aln.paf.gz # it will take a while
 impg index -p hprc465vschm13.aln.paf.gz
 impg index -p hprc465vsgrch38.aln.paf.gz
 ```
