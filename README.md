@@ -155,11 +155,12 @@ Use `scripts/plot-impg-coverage.R` to plot coverage statistics:
 
 ![Impg coverage - Samples/Haplotypes](./images/hprc25272.CHM13.w100k.samples-haplotypes.png)
 
-## Explicit pangenome graph
+## Explicit pangenome graphs
 
-Get the explicit whole-pangenome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/.
+Get the explicit whole-genome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/whole-genome.
+Get the explicit chromosome-specific PGGB-graphs at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/by-chromosome.
 
 ## Variants
 
-Get the whole-pangenome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/.
-
+Get the whole-genome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/whole-genome/.
+Get the chromosome-specific PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/by-chromosome.
