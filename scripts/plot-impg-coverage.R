@@ -147,7 +147,6 @@ if (!is.null(bed_regions)) {
   cat("\nNo BED file loaded. To add region annotations, set bed_file_path to your BED file.\n\n")
 }
 
-
 #===============================================================================
 # Alignments across CHM13
 #========================
@@ -175,7 +174,7 @@ if (!is.null(bed_regions)) {
 
 p_combined_alignments <- p_combined_alignments +
   geom_line() +
-  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
+  facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
@@ -203,6 +202,68 @@ p_combined_alignments <- p_combined_alignments +
 ggsave(
   filename = paste0("p_alignments_across_chm13.", window_size, ".pdf"),
   plot = p_combined_alignments,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+
+
+# Create wide version
+p_combined_alignments_wide <- ggplot(data_alignments, aes(x = position, y = value, color = metric, group = metric))
+
+# Add BED regions if available
+if (!is.null(bed_regions)) {
+  p_combined_alignments_wide <- p_combined_alignments_wide +
+    geom_rect(data = bed_regions,
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
+              inherit.aes = FALSE,
+              alpha = 0.2) +
+    scale_fill_manual(values = bed_colors, name = "Region")
+}
+
+p_combined_alignments_wide <- p_combined_alignments_wide +
+  geom_line(linewidth = 0.5, alpha = 0.9) +
+  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+  
+  scale_x_continuous(
+    breaks = seq(0, 300, 50),
+    expand = c(0.01, 0)
+  ) +
+  
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  
+  scale_color_manual(values = c("black", "red")) +
+  guides(color = "none") +
+  
+  labs(
+    title = paste0("Alignments across CHM13 (", window_size, " windows)"),
+    x = "Position (Mbp)",
+    y = "Alignments (log scale)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    strip.text.y = element_text(size = 8, angle = 0),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    strip.placement = "outside",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
+    panel.spacing = unit(0.05, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 15, face = "bold")
+  )
+
+ggsave(
+  filename = paste0("p_alignments_across_chm13_wide.", window_size, ".pdf"),
+  plot = p_combined_alignments_wide,
   width = width,
   height = height,
   dpi = dpi,
@@ -243,7 +304,7 @@ if (!is.null(bed_regions)) {
 
 p_combined_haplo_samples <- p_combined_haplo_samples +
   geom_line() +
-  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
+  facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
                      expand = expansion(mult = c(0.09, 0.15))) +
@@ -307,7 +368,93 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
 
 ggsave(
   filename = paste0("p_samples-haplotypes_across_chm13.", window_size, ".pdf"),
-  plot = p_combined_alignments,
+  plot = p_combined_haplo_samples,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+
+
+# Create wide version
+p_combined_haplo_samples_wide <- ggplot(data_haplo_samples, aes(x = position, y = value, color = metric, group = metric))
+
+# Add BED regions if available
+if (!is.null(bed_regions)) {
+  p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+    geom_rect(data = bed_regions,
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 500, fill = name),
+              inherit.aes = FALSE,
+              alpha = 0.2) +
+    scale_fill_manual(values = bed_colors, name = "Region")
+}
+
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+  geom_line(linewidth = 0.5, alpha = 0.9) +
+  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+  
+  scale_x_continuous(
+    breaks = seq(0, 300, 50),
+    expand = c(0.01, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 500),
+    breaks = seq(0, 500, 100)
+  ) +
+  
+  scale_color_manual(values = c("darkgreen", "purple")) +
+  
+  # Add horizontal reference lines for all facets
+  geom_hline(yintercept = num_haplo, linetype = "dashed", color = "darkgreen", alpha = 0.5, linewidth = 0.3) +
+  geom_hline(yintercept = num_sample, linetype = "dashed", color = "purple", alpha = 0.5, linewidth = 0.3) +
+  
+  labs(
+    title = paste0("Samples/Haplotypes across CHM13 (", window_size, " windows)"),
+    x = "Position (Mbp)",
+    y = "Count",
+    color = "Metric"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    strip.text.y = element_text(size = 8, angle = 0),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    strip.placement = "outside",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
+    panel.spacing = unit(0.05, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.text = element_text(size = 13)
+  )
+
+# Add chrX-specific horizontal line
+# Get the chromosome levels
+chrom_levels <- levels(data_haplo_samples$chromosome)
+
+# Create a dataframe for the chrX horizontal line
+chrX_line_data_wide <- data.frame(
+  yintercept = 348,
+  chromosome = "chrX"
+)
+chrX_line_data_wide$chromosome <- factor(chrX_line_data_wide$chromosome, levels = chrom_levels)
+
+# Add the chrX-specific horizontal line
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+  geom_hline(data = chrX_line_data_wide,
+             aes(yintercept = yintercept),
+             linetype = "dashed", color = "black", alpha = 0.5, linewidth = 0.3)
+
+ggsave(
+  filename = paste0("p_samples-haplotypes_across_chm13_wide.", window_size, ".pdf"),
+  plot = p_combined_haplo_samples_wide,
   width = width,
   height = height,
   dpi = dpi,
@@ -367,7 +514,8 @@ ggsave(
   bg = "white"
 )
 
-# Create p_num_chromosomes_wide plot with BED regions
+
+# Create wide version
 p_num_chromosomes_wide <- ggplot(data, aes(x = position, y = num_chromosomes))
 
 # Add BED regions if available (as horizontal bands for wide format)
@@ -423,183 +571,8 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
     legend.title = element_text(size = 15, face = "bold")
   )
 
-# Create wide version of combined alignments plot
-p_combined_alignments_wide <- ggplot(data_alignments, aes(x = position, y = value, color = metric, group = metric))
-
-# Add BED regions if available
-if (!is.null(bed_regions)) {
-  p_combined_alignments_wide <- p_combined_alignments_wide +
-    geom_rect(data = bed_regions,
-              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
-              inherit.aes = FALSE,
-              alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region")
-}
-
-p_combined_alignments_wide <- p_combined_alignments_wide +
-  geom_line(linewidth = 0.5, alpha = 0.9) +
-  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
-
-  scale_x_continuous(
-    breaks = seq(0, 300, 50),
-    expand = c(0.01, 0)
-  ) +
-
-  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-
-  scale_color_manual(values = c("black", "red")) +
-  guides(color = "none") +
-
-  labs(
-    title = paste0("Alignments across CHM13 (", window_size, " windows)"),
-    x = "Position (Mbp)",
-    y = "Alignments (log scale)"
-  ) +
-
-  theme_minimal() +
-  theme(
-    strip.text.y = element_text(size = 8, angle = 0),
-    strip.background = element_rect(fill = "gray95", color = NA),
-    strip.placement = "outside",
-    axis.text.y = element_text(size = 6),
-    axis.text.x = element_text(size = 6),
-    axis.title = element_text(size = 10),
-    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
-    panel.spacing = unit(0.05, "lines"),
-    legend.position = "right",
-    legend.title = element_text(size = 15, face = "bold")
-  )
-
-# Create wide version of haplo/samples plot
-p_combined_haplo_samples_wide <- ggplot(data_haplo_samples, aes(x = position, y = value, color = metric, group = metric))
-
-# Add BED regions if available
-if (!is.null(bed_regions)) {
-  p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
-    geom_rect(data = bed_regions,
-              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 500, fill = name),
-              inherit.aes = FALSE,
-              alpha = 0.2) +
-    scale_fill_manual(values = bed_colors, name = "Region")
-}
-
-p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
-  geom_line(linewidth = 0.5, alpha = 0.9) +
-  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
-
-  scale_x_continuous(
-    breaks = seq(0, 300, 50),
-    expand = c(0.01, 0)
-  ) +
-
-  scale_y_continuous(
-    limits = c(0, 500),
-    breaks = seq(0, 500, 100)
-  ) +
-
-  scale_color_manual(values = c("darkgreen", "purple")) +
-
-  # Add horizontal reference lines for all facets
-  geom_hline(yintercept = num_haplo, linetype = "dashed", color = "darkgreen", alpha = 0.5, linewidth = 0.3) +
-  geom_hline(yintercept = num_sample, linetype = "dashed", color = "purple", alpha = 0.5, linewidth = 0.3) +
-
-  labs(
-    title = paste0("Samples/Haplotypes across CHM13 (", window_size, " windows)"),
-    x = "Position (Mbp)",
-    y = "Count",
-    color = "Metric"
-  ) +
-
-  theme_minimal() +
-  theme(
-    strip.text.y = element_text(size = 8, angle = 0),
-    strip.background = element_rect(fill = "gray95", color = NA),
-    strip.placement = "outside",
-    axis.text.y = element_text(size = 6),
-    axis.text.x = element_text(size = 6),
-    axis.title = element_text(size = 10),
-    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
-    panel.grid.minor = element_blank(),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
-    panel.spacing = unit(0.05, "lines"),
-    legend.position = "right",
-    legend.title = element_text(size = 15, face = "bold"),
-    legend.text = element_text(size = 13)
-  )
-
-# Add chrX-specific horizontal line
-# Get the chromosome levels
-chrom_levels <- levels(data_haplo_samples$chromosome)
-
-# Create a dataframe for the chrX horizontal line
-chrX_line_data_wide <- data.frame(
-  yintercept = 348,
-  chromosome = "chrX"
-)
-chrX_line_data_wide$chromosome <- factor(chrX_line_data_wide$chromosome, levels = chrom_levels)
-
-# Add the chrX-specific horizontal line
-p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
-  geom_hline(data = chrX_line_data_wide,
-             aes(yintercept = yintercept),
-             linetype = "dashed", color = "black", alpha = 0.5, linewidth = 0.3)
-
-# Print summary of BED regions if loaded
-if (!is.null(bed_regions)) {
-  cat("\nBED regions loaded successfully!\n")
-  cat("Number of regions:", nrow(bed_regions), "\n")
-  cat("Chromosomes covered:", paste(unique(bed_regions$chromosome), collapse = ", "), "\n\n")
-} else {
-  cat("\nNo BED file loaded. To add region annotations, set bed_file_path to your BED file.\n\n")
-}
-
-# Print the plots
-print(p_combined_alignments)
-print(p_combined_haplo_samples)
-print(p_num_chromosomes)
-print(p_num_chromosomes_wide)
-print(p_combined_alignments_wide)
-print(p_combined_haplo_samples_wide)
-
-width=16
-height=9
-dpi=300
-
-# Save the plots
 ggsave(
-  filename = "p_combined_alignments.pdf",
-  plot = p_combined_alignments,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = "p_combined_haplo_samples.pdf",
-  plot = p_combined_haplo_samples,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = "p_num_chromosomes.pdf",
-  plot = p_num_chromosomes,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = paste0("p_chromosomes_across_chm13_wide", window_size, ".pdf"),
+  filename = paste0("p_chromosomes_across_chm13_wide.", window_size, ".pdf"),
   plot = p_num_chromosomes_wide,
   width = width,
   height = height,
