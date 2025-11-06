@@ -8,8 +8,11 @@ library(readr)
 
 # Parameters for images
 width <- 16
-height <- 9
+height <- 10
 dpi <- 300
+
+# Control whether to add vertical lines connecting consecutive windows
+add_vertical <- TRUE  # Set to FALSE to disable vertical connecting lines
 
 # Read the data
 window_size <- '1Mb'
@@ -64,9 +67,13 @@ data <- data %>%
     by = "chrom_num"
   )
 
-# Create a position variable for x-axis that represents the bin midpoint
+# Convert start and end positions to Mbp, also keep midpoint for heatmaps
 data <- data %>%
-  mutate(position = (start + end) / 2 / 1e6)  # Convert to Mbp
+  mutate(
+    start_mbp = start / 1e6,
+    end_mbp = end / 1e6,
+    position = (start + end) / 2 / 1e6  # Keep for heatmaps
+  )
 
 # Reorder the factor levels to ensure chromosomes are in the correct order
 data$chromosome <- factor(data$chromosome, levels = c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
@@ -147,7 +154,6 @@ if (!is.null(bed_regions)) {
   cat("\nNo BED file loaded. To add region annotations, set bed_file_path to your BED file.\n\n")
 }
 
-
 #===============================================================================
 # Alignments across CHM13
 #========================
@@ -160,7 +166,7 @@ data_alignments$metric <- factor(data_alignments$metric,
 data_alignments <- data_alignments %>% filter(metric == "Alignments")
 
 # Create combined alignments plot
-p_combined_alignments <- ggplot(data_alignments, aes(x = position, y = value, color = metric, group = metric))
+p_combined_alignments <- ggplot(data_alignments)
 
 # Add BED regions if available (use log scale appropriate limits)
 if (!is.null(bed_regions)) {
@@ -168,19 +174,38 @@ if (!is.null(bed_regions)) {
     geom_rect(data = bed_regions,
               aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
               inherit.aes = FALSE,
-              #fill = "grey50",
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_alignments <- p_combined_alignments +
-  geom_line() +
-  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_alignments_vertical <- data_alignments %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_alignments <- p_combined_alignments +
+    geom_segment(data = data_alignments_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5)
+}
+
+p_combined_alignments <- p_combined_alignments +
+  scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
+  facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
-  scale_color_manual(values = c("black", "red")) +
-  guides(color = "none") +  # To hide the Metric legend
   labs(
     title = paste0("Alignments across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
@@ -209,6 +234,87 @@ ggsave(
   units = "in",
   bg = "white"
 )
+
+
+# Create wide version
+p_combined_alignments_wide <- ggplot(data_alignments)
+
+# Add BED regions if available
+if (!is.null(bed_regions)) {
+  p_combined_alignments_wide <- p_combined_alignments_wide +
+    geom_rect(data = bed_regions,
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
+              inherit.aes = FALSE,
+              alpha = 0.2) +
+    scale_fill_manual(values = bed_colors, name = "Region")
+}
+
+p_combined_alignments_wide <- p_combined_alignments_wide +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_alignments_vertical <- data_alignments %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_alignments_wide <- p_combined_alignments_wide +
+    geom_segment(data = data_alignments_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5, alpha = 0.9)
+}
+
+p_combined_alignments_wide <- p_combined_alignments_wide +
+  scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
+  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+  
+  scale_x_continuous(
+    breaks = seq(0, 300, 50),
+    expand = c(0.01, 0)
+  ) +
+  
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  
+  labs(
+    title = paste0("Alignments across CHM13 (", window_size, " windows)"),
+    x = "Position (Mbp)",
+    y = "Alignments (log scale)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    strip.text.y = element_text(size = 8, angle = 0),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    strip.placement = "outside",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
+    panel.spacing = unit(0.05, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 15, face = "bold")
+  )
+
+ggsave(
+  filename = paste0("p_alignments_across_chm13_wide.", window_size, ".pdf"),
+  plot = p_combined_alignments_wide,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
 #===============================================================================
 
 #===============================================================================
@@ -228,7 +334,7 @@ data_haplo_samples$metric <- factor(data_haplo_samples$metric,
                                     labels = c("Haplotypes", "Samples"))
 
 # Create combined haplotypes and samples plot with BED regions
-p_combined_haplo_samples <- ggplot(data_haplo_samples, aes(x = position, y = value, color = metric, group = metric))
+p_combined_haplo_samples <- ggplot(data_haplo_samples)
 
 # Add BED regions if available
 if (!is.null(bed_regions)) {
@@ -236,23 +342,43 @@ if (!is.null(bed_regions)) {
     geom_rect(data = bed_regions,
               aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 500, fill = name),
               inherit.aes = FALSE,
-              #fill = "grey50",
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_haplo_samples <- p_combined_haplo_samples +
-  geom_line() +
-  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_haplo_samples_vertical <- data_haplo_samples %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_haplo_samples <- p_combined_haplo_samples +
+    geom_segment(data = data_haplo_samples_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5)
+}
+
+p_combined_haplo_samples <- p_combined_haplo_samples +
+  scale_color_manual(values = c("Haplotypes" = "darkgreen", "Samples" = "purple"), name = "Metric") +
+  facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
                      expand = expansion(mult = c(0.09, 0.15))) +
-  scale_color_manual(values = c("darkgreen", "purple")) +
   labs(
     title = paste0("Samples/Haplotypes across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
     y = "Count",
-    color = "Metric"
+    fill = "Metric"
   ) +
   theme_minimal() +
   theme(
@@ -307,7 +433,113 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
 
 ggsave(
   filename = paste0("p_samples-haplotypes_across_chm13.", window_size, ".pdf"),
-  plot = p_combined_alignments,
+  plot = p_combined_haplo_samples,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+
+
+# Create wide version
+p_combined_haplo_samples_wide <- ggplot(data_haplo_samples)
+
+# Add BED regions if available
+if (!is.null(bed_regions)) {
+  p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+    geom_rect(data = bed_regions,
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 500, fill = name),
+              inherit.aes = FALSE,
+              alpha = 0.2) +
+    scale_fill_manual(values = bed_colors, name = "Region")
+}
+
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_haplo_samples_vertical <- data_haplo_samples %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+    geom_segment(data = data_haplo_samples_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5, alpha = 0.9)
+}
+
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+  scale_color_manual(values = c("Haplotypes" = "darkgreen", "Samples" = "purple"), name = "Metric") +
+  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+  
+  scale_x_continuous(
+    breaks = seq(0, 300, 50),
+    expand = c(0.01, 0)
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 500),
+    breaks = seq(0, 500, 100)
+  ) +
+  
+  # Add horizontal reference lines for all facets
+  geom_hline(yintercept = num_haplo, linetype = "dashed", color = "darkgreen", alpha = 0.5, linewidth = 0.3) +
+  geom_hline(yintercept = num_sample, linetype = "dashed", color = "purple", alpha = 0.5, linewidth = 0.3) +
+  
+  labs(
+    title = paste0("Samples/Haplotypes across CHM13 (", window_size, " windows)"),
+    x = "Position (Mbp)",
+    y = "Count",
+    fill = "Metric"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    strip.text.y = element_text(size = 8, angle = 0),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    strip.placement = "outside",
+    axis.text.y = element_text(size = 6),
+    axis.text.x = element_text(size = 6),
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
+    panel.spacing = unit(0.05, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 15, face = "bold"),
+    legend.text = element_text(size = 13)
+  )
+
+# Add chrX-specific horizontal line
+# Get the chromosome levels
+chrom_levels <- levels(data_haplo_samples$chromosome)
+
+# Create a dataframe for the chrX horizontal line
+chrX_line_data_wide <- data.frame(
+  yintercept = 348,
+  chromosome = "chrX"
+)
+chrX_line_data_wide$chromosome <- factor(chrX_line_data_wide$chromosome, levels = chrom_levels)
+
+# Add the chrX-specific horizontal line
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+  geom_hline(data = chrX_line_data_wide,
+             aes(yintercept = yintercept),
+             linetype = "dashed", color = "black", alpha = 0.5, linewidth = 0.3)
+
+ggsave(
+  filename = paste0("p_samples-haplotypes_across_chm13_wide.", window_size, ".pdf"),
+  plot = p_combined_haplo_samples_wide,
   width = width,
   height = height,
   dpi = dpi,
@@ -320,7 +552,7 @@ ggsave(
 # Num. chromosomes across CHM13
 #==============================
 # Create p_num_chromosomes plot with BED regions
-p_num_chromosomes <- ggplot(data, aes(x = position, y = num_chromosomes))
+p_num_chromosomes <- ggplot(data)
 
 # Add BED regions if available
 if (!is.null(bed_regions)) {
@@ -328,13 +560,33 @@ if (!is.null(bed_regions)) {
     geom_rect(data = bed_regions,
               aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 25, fill = name),
               inherit.aes = FALSE,
-              #fill = "grey50",
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_num_chromosomes <- p_num_chromosomes +
-  geom_line(color = "darkorange", linewidth = 0.8) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_vertical <- data %>%
+    group_by(chromosome) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_num_chromosomes = lead(num_chromosomes)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_num_chromosomes <- p_num_chromosomes +
+    geom_segment(data = data_vertical,
+                 aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                 color = "darkorange", linewidth = 0.8)
+}
+
+p_num_chromosomes <- p_num_chromosomes +
   facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
@@ -367,8 +619,9 @@ ggsave(
   bg = "white"
 )
 
-# Create p_num_chromosomes_wide plot with BED regions
-p_num_chromosomes_wide <- ggplot(data, aes(x = position, y = num_chromosomes))
+
+# Create wide version
+p_num_chromosomes_wide <- ggplot(data)
 
 # Add BED regions if available (as horizontal bands for wide format)
 if (!is.null(bed_regions)) {
@@ -376,13 +629,33 @@ if (!is.null(bed_regions)) {
     geom_rect(data = bed_regions,
               aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 25, fill = name),
               inherit.aes = FALSE,
-              #fill = "grey50",
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_num_chromosomes_wide <- p_num_chromosomes_wide +
-  geom_line(color = "darkorange", linewidth = 0.5, alpha = 0.9) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_vertical <- data %>%
+    group_by(chromosome) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_num_chromosomes = lead(num_chromosomes)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_num_chromosomes_wide <- p_num_chromosomes_wide +
+    geom_segment(data = data_vertical,
+                 aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                 color = "darkorange", linewidth = 0.5, alpha = 0.9)
+}
+
+p_num_chromosomes_wide <- p_num_chromosomes_wide +
   facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
   
   scale_x_continuous(
@@ -424,7 +697,7 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
   )
 
 ggsave(
-  filename = paste0("p_chromosomes_across_chm13_wide", window_size, ".pdf"),
+  filename = paste0("p_chromosomes_across_chm13_wide.", window_size, ".pdf"),
   plot = p_num_chromosomes_wide,
   width = width,
   height = height,
@@ -451,9 +724,9 @@ plot_single_chromosome <- function(data,
     return(NULL)
   }
   
-  # Get the actual data range for this chromosome
-  data_min <- min(data_chr$position)
-  data_max <- max(data_chr$position)
+  # Get the actual data range for this chromosome (using window starts/ends)
+  data_min <- min(data_chr$start_mbp)
+  data_max <- max(data_chr$end_mbp)
   
   # Adjust start_mbp and end_mbp to actual data range
   if (!is.null(start_mbp)) {
@@ -476,9 +749,9 @@ plot_single_chromosome <- function(data,
     end_mbp <- data_max
   }
   
-  # Apply position range filter
+  # Apply position range filter - keep windows that overlap with the range
   data_chr <- data_chr %>%
-    filter(position >= start_mbp & position <= end_mbp)
+    filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
   
   # Filter BED regions if they exist
   if (!is.null(bed_regions)) {
@@ -493,7 +766,7 @@ plot_single_chromosome <- function(data,
   }
   
   # Create the plot
-  p <- ggplot(data_chr, aes(x = position, y = num_chromosomes))
+  p <- ggplot(data_chr)
   
   # Add BED regions if available with colors
   if (!is.null(bed_regions) && nrow(bed_regions) > 0) {
@@ -510,8 +783,26 @@ plot_single_chromosome <- function(data,
   }
   
   p <- p +
-    geom_line(color = "darkorange", linewidth = 0.8, alpha = 0.9) +
+    geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8, alpha = 0.9)
+  
+  # Add vertical connecting lines if enabled
+  if (exists("add_vertical") && add_vertical) {
+    # Create vertical connectors between consecutive windows
+    data_chr_vertical <- data_chr %>%
+      arrange(start_mbp) %>%
+      mutate(
+        next_start = lead(start_mbp),
+        next_num_chromosomes = lead(num_chromosomes)
+      ) %>%
+      filter(!is.na(next_start))
     
+    p <- p +
+      geom_segment(data = data_chr_vertical,
+                   aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                   color = "darkorange", linewidth = 0.8, alpha = 0.9)
+  }
+  
+  p <- p +
     # Set x-axis limits based on specified range
     scale_x_continuous(
       limits = c(start_mbp, end_mbp),
@@ -549,17 +840,16 @@ plot_single_chromosome <- function(data,
 }
 
 # General function to create chromosome matching heatmap
-plot_chromosome_matching_heatmap <- function(data, 
-                                             target_chr = "chr1", 
-                                             start_mbp = NULL, 
-                                             end_mbp = NULL,
-                                             highlight_regions = TRUE,
-                                             output_filename = NULL) {
+plot_chromosome_binary_matching_heatmap <- function(data, 
+                                                    target_chr = "chr1", 
+                                                    start_mbp = NULL, 
+                                                    end_mbp = NULL,
+                                                    highlight_regions = TRUE,
+                                                    output_filename = NULL) {
   
   # Filter for the target chromosome
   chr_data <- data %>%
-    filter(chromosome == target_chr) %>%
-    mutate(position = (start + end) / 2 / 1e6)
+    filter(chromosome == target_chr)
   
   # Check if data exists for this chromosome
   if (nrow(chr_data) == 0) {
@@ -567,9 +857,9 @@ plot_chromosome_matching_heatmap <- function(data,
     return(NULL)
   }
   
-  # Get actual data range
-  data_min <- min(chr_data$position)
-  data_max <- max(chr_data$position)
+  # Get actual data range (using window boundaries)
+  data_min <- min(chr_data$start_mbp)
+  data_max <- max(chr_data$end_mbp)
   
   # Set position range with defaults
   if (is.null(start_mbp)) {
@@ -608,9 +898,9 @@ plot_chromosome_matching_heatmap <- function(data,
     end_mbp <- temp
   }
   
-  # Filter by position range
+  # Filter by position range - keep windows that overlap
   chr_data_filtered <- chr_data %>%
-    filter(position >= start_mbp & position <= end_mbp)
+    filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
   
   if (nrow(chr_data_filtered) == 0) {
     warning(paste0("No data in specified range [", round(start_mbp, 2), ", ", round(end_mbp, 2), "] Mbp"))
@@ -649,7 +939,7 @@ plot_chromosome_matching_heatmap <- function(data,
   # Create binary matrix
   chr_binary <- parse_chromosomes_binary(chr_data_filtered)
   
-  # Combine with position data for plotting
+  # Combine with position data for plotting (use midpoint for heatmap tiles)
   chr_heatmap_data <- cbind(chr_data_filtered %>% select(position), chr_binary) %>%
     as.data.frame() %>%
     pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "present")
@@ -724,20 +1014,19 @@ plot_chromosome_matching_heatmap <- function(data,
   return(p_heatmap)
 }
 
-plot_chromosome_matching_heatmap2 <- function(data, 
-                                              target_chr = "chr1", 
-                                              start_mbp = NULL, 
-                                              end_mbp = NULL,
-                                              bed_regions = NULL,
-                                              highlight_regions = TRUE,
-                                              show_numbers = "auto",  # "auto", "always", "never"
-                                              number_threshold = 30,  # max windows to show numbers
-                                              output_filename = NULL) {
+plot_chromosome_count_matching_heatmap <- function(data, 
+                                                   target_chr = "chr1", 
+                                                   start_mbp = NULL, 
+                                                   end_mbp = NULL,
+                                                   bed_regions = NULL,
+                                                   highlight_regions = TRUE,
+                                                   show_numbers = "auto",  # "auto", "always", "never"
+                                                   number_threshold = 30,  # max windows to show numbers
+                                                   output_filename = NULL) {
   
   # Filter for the target chromosome
   chr_data <- data %>%
-    filter(chromosome == target_chr) %>%
-    mutate(position = (start + end) / 2 / 1e6)
+    filter(chromosome == target_chr)
   
   # Check if data exists for this chromosome
   if (nrow(chr_data) == 0) {
@@ -746,8 +1035,8 @@ plot_chromosome_matching_heatmap2 <- function(data,
   }
   
   # Get actual data range
-  data_min <- min(chr_data$position)
-  data_max <- max(chr_data$position)
+  data_min <- min(chr_data$start_mbp)
+  data_max <- max(chr_data$end_mbp)
   
   # Set position range with defaults
   if (is.null(start_mbp)) {
@@ -788,7 +1077,7 @@ plot_chromosome_matching_heatmap2 <- function(data,
   
   # Filter by position range
   chr_data_filtered <- chr_data %>%
-    filter(position >= start_mbp & position <= end_mbp)
+    filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
   
   if (nrow(chr_data_filtered) == 0) {
     warning(paste0("No data in specified range [", round(start_mbp, 2), ", ", round(end_mbp, 2), "] Mbp"))
@@ -836,7 +1125,7 @@ plot_chromosome_matching_heatmap2 <- function(data,
   # Create count matrix
   chr_counts <- parse_chromosomes_counts(chr_data_filtered)
   
-  # Combine with position data for plotting
+  # Combine with position data for plotting (use midpoint for tiles)
   chr_heatmap_data <- cbind(chr_data_filtered %>% select(position), chr_counts) %>%
     as.data.frame() %>%
     pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "count")
@@ -846,7 +1135,7 @@ plot_chromosome_matching_heatmap2 <- function(data,
   if (show_numbers == "always") {
     show_text <- TRUE
   } else if (show_numbers == "auto") {
-    # Show numbers if we have 30 or fewer windows
+    # Show numbers if we have <= number_threshold windows to show
     show_text <- nrow(chr_data_filtered) <= number_threshold
   }
   
@@ -1038,8 +1327,9 @@ plot_chromosome_matching_heatmap2 <- function(data,
         region_start <- max(chr_bed$start_mbp[i], input_start)
         region_end <- min(chr_bed$end_mbp[i], input_end)
         
-        region_indices <- which(chr_data_filtered$position >= region_start & 
-                                  chr_data_filtered$position <= region_end)
+        # Filter windows that overlap with this region
+        region_indices <- which(chr_data_filtered$end_mbp >= region_start & 
+                                  chr_data_filtered$start_mbp <= region_end)
         
         if(length(region_indices) > 0) {
           # Get counts for this region
@@ -1072,6 +1362,171 @@ plot_chromosome_matching_heatmap2 <- function(data,
   return(p_heatmap)
 }
 
+# Example usage for all functions
+
+# Single chromosome plot
+plot_single_chromosome(data, 
+                       target_chr = "chr1", 
+                       start_mbp = 0, 
+                       end_mbp = 10,
+                       bed_regions = bed_regions)
+
+# Binary matching heatmap
+plot_chromosome_binary_matching_heatmap(data, 
+                                 target_chr = "chr1",
+                                 start_mbp = 0, 
+                                 end_mbp = 10,
+                                 )
+
+# Haplotype count heatmap - full chromosome
+plot_chromosome_count_matching_heatmap(data, 
+                                  target_chr = "chr1",
+                                  start_mbp = 0, 
+                                  end_mbp = 10,
+                                  bed_regions = bed_regions,
+                                  show_numbers = "always")
+
+# Function to create genome-wide stacked heatmap (num_chromosomes)
+plot_genome_wide_numchrom_heatmap <- function(data,
+                                               bed_regions = NULL,
+                                               highlight_regions = TRUE,
+                                               output_filename = NULL) {
+
+  # Parse the chroms-num_haplotypes column to get counts for all chromosomes
+  parse_chromosomes_counts <- function(data) {
+    all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+
+    count_matrix <- matrix(0,
+                           nrow = nrow(data),
+                           ncol = length(all_chroms),
+                           dimnames = list(NULL, all_chroms))
+
+    for(i in 1:nrow(data)) {
+      if(!is.na(data$`chroms-num_haplotypes`[i]) && data$`chroms-num_haplotypes`[i] != "") {
+        pairs <- strsplit(data$`chroms-num_haplotypes`[i], ",")[[1]]
+
+        for(pair in pairs) {
+          parts <- strsplit(trimws(pair), "-")[[1]]
+          if(length(parts) >= 2) {
+            chr_name <- paste(parts[-length(parts)], collapse = "-")
+            count <- as.numeric(parts[length(parts)])
+
+            if(chr_name %in% all_chroms && !is.na(count)) {
+              count_matrix[i, chr_name] <- count
+            }
+          }
+        }
+      }
+    }
+
+    return(count_matrix)
+  }
+
+  # Create count matrix for all data
+  chr_counts <- parse_chromosomes_counts(data)
+
+  # Combine with position and chromosome data
+  heatmap_data <- cbind(
+    data %>% select(chromosome, position = position),
+    chr_counts
+  ) %>%
+    as.data.frame() %>%
+    pivot_longer(cols = -c(chromosome, position),
+                 names_to = "matching_chromosome",
+                 values_to = "count")
+
+  # Ensure chromosome ordering
+  heatmap_data$chromosome <- factor(heatmap_data$chromosome,
+                                    levels = c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
+
+  # Get max count for color scale
+  max_count <- max(heatmap_data$count, na.rm = TRUE)
+
+  # Create custom color scale
+  if (max_count > 0) {
+    if (max_count == 1) {
+      color_breaks <- c(0, 1)
+      color_values <- c(0, 1)
+      colors <- c("white", "#2166ac")
+    } else {
+      color_breaks <- c(0, 1, max_count)
+      color_values <- c(0, 0.4, 1)
+      colors <- c("white", "#6baed6", "#08306b")
+    }
+  } else {
+    colors <- c("white", "white")
+    color_breaks <- c(0, 1)
+    color_values <- c(0, 1)
+  }
+
+  # Create the heatmap
+  # Calculate tile width per chromosome for proper rendering
+  tile_widths <- heatmap_data %>%
+    group_by(chromosome) %>%
+    summarize(tile_width = median(diff(sort(unique(position))), na.rm = TRUE) * 1.01) %>%
+    ungroup()
+
+  heatmap_data <- heatmap_data %>%
+    left_join(tile_widths, by = "chromosome")
+
+  p_heatmap <- ggplot(heatmap_data,
+                      aes(x = position, y = matching_chromosome, fill = count)) +
+    geom_tile(aes(width = tile_width), height = 1) +
+    facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+    scale_x_continuous(expand = c(0.01, 0)) +
+    scale_y_discrete(limits = rev(paste0("chr", c(1:22, "X", "Y", "M")))) +
+    labs(
+      title = paste0("Genome-wide chromosome matching patterns (", window_size, " windows)"),
+      subtitle = paste0("Haplotype counts per matching chromosome (max ", max_count, " haplotypes)"),
+      x = "Position (Mbp)",
+      y = "Target chromosome | Matching Chromosome"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text.y.left = element_text(size = 8, angle = 0),
+      strip.background = element_rect(fill = "gray95", color = NA),
+      strip.placement = "outside",
+      axis.text.y = element_text(size = 6),
+      axis.text.x = element_text(size = 8),
+      axis.title = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5),
+      panel.grid = element_blank(),
+      panel.spacing = unit(0.05, "lines"),
+      legend.position = "right",
+      legend.key.height = unit(1, "cm"),
+      legend.title = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9)
+    )
+
+  # Apply color scale
+  if (max_count > 0) {
+    p_heatmap <- p_heatmap +
+      scale_fill_gradientn(
+        colors = colors,
+        values = color_values,
+        breaks = pretty(c(0, max_count), n = 5),
+        limits = c(0, max_count),
+        name = "Haplotype\ncount",
+        na.value = "white"
+      )
+  } else {
+    p_heatmap <- p_heatmap +
+      scale_fill_gradient(low = "white", high = "white",
+                          name = "Haplotype\ncount",
+                          limits = c(0, 1))
+  }
+
+  cat("\n=== Genome-wide chromosome matching heatmap ===\n")
+  cat("Maximum haplotype count:", max_count, "\n")
+  cat("Total windows:", nrow(data), "\n\n")
+
+  return(p_heatmap)
+}
+
+#===============================================================================
+# Chromosome-level and genome-wide identity heatmaps
+#===================================================
 # Function to create average identity heatmap with automatic gradient scaling
 plot_chromosome_identity_heatmap <- function(data, 
                                              target_chr = "chr1", 
@@ -1085,8 +1540,7 @@ plot_chromosome_identity_heatmap <- function(data,
   
   # Filter for the target chromosome
   chr_data <- data %>%
-    filter(chromosome == target_chr) %>%
-    mutate(position = (start + end) / 2 / 1e6)
+    filter(chromosome == target_chr)
   
   if (nrow(chr_data) == 0) {
     warning(paste("No data found for chromosome:", target_chr))
@@ -1094,8 +1548,8 @@ plot_chromosome_identity_heatmap <- function(data,
   }
   
   # Get actual data range
-  data_min <- min(chr_data$position)
-  data_max <- max(chr_data$position)
+  data_min <- min(chr_data$start_mbp)
+  data_max <- max(chr_data$end_mbp)
   
   # Set position range with defaults
   if (is.null(start_mbp)) {
@@ -1125,7 +1579,7 @@ plot_chromosome_identity_heatmap <- function(data,
   
   # Filter by position range
   chr_data_filtered <- chr_data %>%
-    filter(position >= start_mbp & position <= end_mbp)
+    filter(end_mbp >= start_mbp & start_mbp <= end_mbp)
   
   if (nrow(chr_data_filtered) == 0) {
     warning(paste0("No data in specified range [", round(start_mbp, 2), ", ", round(end_mbp, 2), "] Mbp"))
@@ -1167,7 +1621,7 @@ plot_chromosome_identity_heatmap <- function(data,
   # Create identity matrix
   chr_identity <- parse_chromosomes_identity(chr_data_filtered)
   
-  # Combine with position data for plotting
+  # Combine with position data for plotting (use midpoint for tiles)
   chr_heatmap_data <- cbind(chr_data_filtered %>% select(position), chr_identity) %>%
     as.data.frame() %>%
     pivot_longer(cols = -position, names_to = "matching_chromosome", values_to = "identity")
@@ -1182,12 +1636,10 @@ plot_chromosome_identity_heatmap <- function(data,
   
   identity_min <- min(identity_values)
   identity_max <- max(identity_values)
-  identity_midpoint <- median(identity_values)
   
   cat("\n=== Identity gradient parameters ===\n")
   cat("Min identity:", round(identity_min, 4), "\n")
   cat("Max identity:", round(identity_max, 4), "\n")
-  cat("Midpoint (median):", round(identity_midpoint, 4), "\n")
   cat("Mean identity:", round(mean(identity_values), 4), "\n\n")
   
   # Determine whether to show numbers
@@ -1223,8 +1675,8 @@ plot_chromosome_identity_heatmap <- function(data,
     text_data <- chr_heatmap_data %>%
       filter(!is.na(identity)) %>%
       mutate(
-        # Choose text color based on identity value relative to midpoint
-        text_color = ifelse(identity < identity_midpoint, "white", "black")
+        # Choose text color: white for dark backgrounds (high identity), black for light (low identity)
+        text_color = "white"
       )
     
     p_heatmap <- p_heatmap +
@@ -1249,11 +1701,9 @@ plot_chromosome_identity_heatmap <- function(data,
   
   # Apply color scale with automatic scaling
   p_heatmap <- p_heatmap +
-    scale_fill_gradient2(
-      low = "#d73027",
-      mid = "#fee08b",
-      high = "#1a9850",
-      midpoint = identity_midpoint,
+    scale_fill_gradient(
+      low = "#d73027",    # Red for low identity
+      high = "#000000",   # Black for 100% identity
       limits = c(identity_min_buffered, identity_max_buffered),
       na.value = "white",
       name = "Avg\nIdentity",
@@ -1261,7 +1711,7 @@ plot_chromosome_identity_heatmap <- function(data,
       labels = function(x) sprintf("%.3f", x)
     ) +
     scale_x_continuous(
-      expand = expansion(mult = c(0.02, 0.02)),  # FIX: Add 2% padding on both sides
+      expand = expansion(mult = c(0.02, 0.02)),  # Add 2% padding on both sides
       limits = c(start_mbp, end_mbp),
       breaks = x_breaks
     ) +
@@ -1345,42 +1795,227 @@ plot_chromosome_identity_heatmap <- function(data,
   return(p_heatmap)
 }
 
-# Example usage for all functions
+# Function to create genome-wide stacked identity heatmap
+plot_genome_wide_identity_heatmap <- function(data,
+                                              bed_regions = NULL,
+                                              highlight_regions = TRUE,
+                                              output_filename = NULL) {
+  
+  # Parse the chroms-avg_identity column
+  parse_chromosomes_identity <- function(data) {
+    all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+    
+    # Initialize identity matrix with NA
+    identity_matrix <- matrix(NA,
+                              nrow = nrow(data),
+                              ncol = length(all_chroms),
+                              dimnames = list(NULL, all_chroms))
+    
+    # Fill in the identity matrix
+    for(i in 1:nrow(data)) {
+      if(!is.na(data$`chroms-avg_identity`[i]) && data$`chroms-avg_identity`[i] != "") {
+        pairs <- strsplit(data$`chroms-avg_identity`[i], ",")[[1]]
+        
+        for(pair in pairs) {
+          parts <- strsplit(trimws(pair), "-")[[1]]
+          if(length(parts) >= 2) {
+            chr_name <- paste(parts[-length(parts)], collapse = "-")
+            identity <- as.numeric(parts[length(parts)])
+            
+            if(chr_name %in% all_chroms && !is.na(identity)) {
+              identity_matrix[i, chr_name] <- identity
+            }
+          }
+        }
+      }
+    }
+    
+    return(identity_matrix)
+  }
+  
+  # Create identity matrix for all data
+  chr_identity <- parse_chromosomes_identity(data)
+  
+  # Combine with position and chromosome data
+  heatmap_data <- cbind(
+    data %>% select(chromosome, position = position),
+    chr_identity
+  ) %>%
+    as.data.frame() %>%
+    pivot_longer(cols = -c(chromosome, position),
+                 names_to = "matching_chromosome",
+                 values_to = "identity")
+  
+  # Ensure chromosome ordering
+  heatmap_data$chromosome <- factor(heatmap_data$chromosome,
+                                    levels = c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
+  
+  # Calculate identity statistics
+  identity_values <- heatmap_data$identity[!is.na(heatmap_data$identity)]
+  
+  if (length(identity_values) == 0) {
+    warning("No identity values found in the data")
+    return(NULL)
+  }
+  
+  identity_min <- min(identity_values)
+  identity_max <- max(identity_values)
+  identity_midpoint <- median(identity_values)
+  
+  cat("\n=== Genome-wide identity gradient parameters ===\n")
+  cat("Min identity:", round(identity_min, 4), "\n")
+  cat("Max identity:", round(identity_max, 4), "\n")
+  cat("Midpoint (median):", round(identity_midpoint, 4), "\n")
+  cat("Mean identity:", round(mean(identity_values), 4), "\n\n")
+  
+  # Add a small buffer to ensure all values are included
+  identity_range <- identity_max - identity_min
+  buffer <- max(0.001, identity_range * 0.01)
+  
+  identity_min_buffered <- identity_min - buffer
+  identity_max_buffered <- identity_max + buffer
+  
+  # Create the heatmap
+  # Calculate tile width per chromosome for proper rendering
+  tile_widths <- heatmap_data %>%
+    group_by(chromosome) %>%
+    summarize(tile_width = median(diff(sort(unique(position))), na.rm = TRUE) * 1.01) %>%
+    ungroup()
+  
+  heatmap_data <- heatmap_data %>%
+    left_join(tile_widths, by = "chromosome")
+  
+  p_heatmap <- ggplot(heatmap_data,
+                      aes(x = position, y = matching_chromosome, fill = identity)) +
+    geom_tile(aes(width = tile_width), height = 1) +
+    facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+    scale_x_continuous(expand = c(0.01, 0)) +
+    scale_y_discrete(limits = rev(paste0("chr", c(1:22, "X", "Y", "M")))) +
+    scale_fill_gradient(
+      low = "#d73027",    # Red for low identity
+      high = "#000000",   # Black for 100% identity
+      limits = c(identity_min_buffered, identity_max_buffered),
+      na.value = "white",
+      name = "Avg\nIdentity",
+      breaks = pretty(c(identity_min, identity_max), n = 5),
+      labels = function(x) sprintf("%.3f", x)
+    ) +
+    labs(
+      title = paste0("Genome-wide alignment identity patterns (", window_size, " windows)"),
+      subtitle = paste0("Average identity per matching chromosome (range: ",
+                        sprintf("%.3f", identity_min), "-", sprintf("%.3f", identity_max), ")"),
+      x = "Position (Mbp)",
+      y = "Target chromosome",
+      caption = "Matching chromosomes (Y-axis within each panel, top to bottom):\nchr1  chr2  chr3  chr4  chr5  chr6  chr7  chr8  chr9  chr10  chr11  chr12\nchr13  chr14  chr15  chr16  chr17  chr18  chr19  chr20  chr21  chr22  chrX  chrY  chrM"
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text.y.left = element_text(size = 8, angle = 0),
+      strip.background = element_rect(fill = "gray95", color = NA),
+      strip.placement = "outside",
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      axis.text.x = element_text(size = 8),
+      axis.title = element_text(size = 10),
+      axis.title.y = element_text(size = 10, margin = margin(r = 10)),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 11, hjust = 0.5),
+      plot.caption = element_text(size = 8, hjust = 1, margin = margin(t = 10)),
+      panel.grid = element_blank(),
+      panel.spacing = unit(0.05, "lines"),
+      legend.position = "right",
+      legend.key.height = unit(1.5, "cm"),
+      legend.title = element_text(size = 10, face = "bold"),
+      legend.text = element_text(size = 9)
+    )
+  
+  cat("=== Genome-wide identity heatmap ===\n")
+  cat("Total windows:", nrow(data), "\n\n")
+  
+  # Create inset for chr18 q arm (subtelomeric region)
+  # Get chr18 data and find the last few Mbp
+  chr18_data <- heatmap_data %>%
+    filter(chromosome == "chr18")
+  
+  chr18_max <- max(chr18_data$position, na.rm = TRUE)
+  chr18_inset_start <- max(0, chr18_max - 5)  # Last 5 Mbp
+  
+  chr18_inset_data <- chr18_data %>%
+    filter(position >= chr18_inset_start)
+  
+  # Create inset plot with chromosome labels visible
+  p_inset <- ggplot(chr18_inset_data,
+                    aes(x = position, y = matching_chromosome, fill = identity)) +
+    geom_tile(height = 1) +
+    scale_y_discrete(limits = rev(paste0("chr", c(1:22, "X", "Y", "M")))) +
+    scale_fill_gradient(
+      low = "#d73027",    # Red for low identity
+      high = "#000000",   # Black for 100% identity
+      limits = c(identity_min_buffered, identity_max_buffered),
+      na.value = "white",
+      guide = "none"
+    ) +
+    labs(
+      title = "chr18 q-arm (subtelomeric)",
+      x = "Position (Mbp)",
+      y = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 6),
+      axis.text.x = element_text(size = 6),
+      axis.title.x = element_text(size = 7),
+      plot.title = element_text(size = 8, face = "bold", hjust = 0.5),
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+      plot.background = element_rect(fill = "white", color = "black", linewidth = 1),
+      plot.margin = margin(5, 5, 5, 5)
+    )
+  
+  return(list(main = p_heatmap, inset = p_inset))
+}
 
-# Single chromosome plot
-plot_single_chromosome(data, 
-                       target_chr = "chr1", 
-                       start_mbp = 0, 
-                       end_mbp = 999,
-                       bed_regions = bed_regions)
+# Create and save the genome-wide identity heatmap
+plots <- plot_genome_wide_identity_heatmap(data, bed_regions = bed_regions)
+# Load cowplot for inset functionality
+library(cowplot)
+# Save version WITHOUT inset
+print(plots$main)
+ggsave(
+  filename = "p_genome_wide_identity_heatmap_no_inset.pdf",
+  plot = plots$main,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
 
-# Binary matching heatmap
-plot_chromosome_matching_heatmap(data, 
-                                 target_chr = "chr1",
-                                 start_mbp = 0, 
-                                 end_mbp = 5,
-                                 )
 
-# Haplotype count heatmap - full chromosome
-plot_chromosome_matching_heatmap2(data, 
-                                  target_chr = "chr1",
-                                  start_mbp = 0, 
-                                  end_mbp = 1,
-                                  bed_regions = NULL,
-                                  show_numbers = "auto")
+# Create the final plot with inset overlaid
+# Move inset up by 25% of its width
+inset_width <- 0.25
+inset_height <- 0.36  # 2x taller (was 0.18)
+inset_y_bottom <- 0.15 + (inset_width * 0.25)  # Keep bottom at same position
 
-# Identity heatmap - full chromosome
-plot_chromosome_identity_heatmap(data, 
-                                 target_chr = "chr1",
-                                 bed_regions = bed_regions)
+p_genome_wide_identity_heatmap <- ggdraw(plots$main) +
+  draw_plot(plots$inset,
+            x = 0.62, y = inset_y_bottom,    # Bottom position stays same
+            width = inset_width, height = inset_height)  # 2x taller
 
-# Identity heatmap - zoomed view
-plot_chromosome_identity_heatmap(data, 
-                                 target_chr = "chr1",
-                                 start_mbp = 0,
-                                 end_mbp = 1,
-                                 bed_regions = NULL,
-                                 show_numbers = "auto")
+print(p_genome_wide_identity_heatmap)
+
+# Save version WITH inset
+# Make the entire plot 40% smaller (16 -> 9.6, 12 -> 7.2)
+ggsave(
+  filename = "p_genome_wide_identity_heatmap.pdf",
+  plot = p_genome_wide_identity_heatmap,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
 
 # Loop through all chromosomes and save identity heatmaps
 for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
@@ -1388,7 +2023,6 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
   p <- plot_chromosome_identity_heatmap(data, 
                                         target_chr = chr)
   if (!is.null(p)) {
-    print(p)
     ggsave(
       filename = paste0("identity_heatmap_", chr, ".pdf"),
       plot = p,
@@ -1406,7 +2040,6 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
                                         start_mbp = 0,
                                         end_mbp = 1)
   if (!is.null(p)) {
-    print(p)
     ggsave(
       filename = paste0("identity_heatmap_", chr, ".zoom_0-1.pdf"),
       plot = p,
@@ -1431,7 +2064,6 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
                                           start_mbp = chr_max - 1,
                                           end_mbp = chr_max)
     if (!is.null(p)) {
-      print(p)
       ggsave(
         filename = paste0("identity_heatmap_", chr, ".zoom_last1mb.pdf"),
         plot = p,
@@ -1444,3 +2076,12 @@ for (chr in paste0("chr", c(1:22, "X", "Y", "M"))) {
     }
   }
 }
+
+# Identity heatmap - full chromosome
+plot_chromosome_identity_heatmap(data, 
+                                 target_chr = "chr1",
+                                 start_mbp = 0,
+                                 end_mbp = 10,
+                                 bed_regions = bed_regions,
+                                 show_numbers = "always")
+#===============================================================================
