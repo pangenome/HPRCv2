@@ -11,6 +11,9 @@ width <- 16
 height <- 9
 dpi <- 300
 
+# Control whether to add vertical lines connecting consecutive windows
+add_vertical <- TRUE  # Set to FALSE to disable vertical connecting lines
+
 # Read the data
 window_size <- '1Mb'
 num_haplo <- 466
@@ -176,7 +179,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_combined_alignments <- p_combined_alignments +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_alignments_vertical <- data_alignments %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_alignments <- p_combined_alignments +
+    geom_segment(data = data_alignments_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5)
+}
+
+p_combined_alignments <- p_combined_alignments +
   scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
   facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
@@ -226,7 +250,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_combined_alignments_wide <- p_combined_alignments_wide +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_alignments_vertical <- data_alignments %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_alignments_wide <- p_combined_alignments_wide +
+    geom_segment(data = data_alignments_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5, alpha = 0.9)
+}
+
+p_combined_alignments_wide <- p_combined_alignments_wide +
   scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
   facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
   
@@ -302,7 +347,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_combined_haplo_samples <- p_combined_haplo_samples +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_haplo_samples_vertical <- data_haplo_samples %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_haplo_samples <- p_combined_haplo_samples +
+    geom_segment(data = data_haplo_samples_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5)
+}
+
+p_combined_haplo_samples <- p_combined_haplo_samples +
   scale_color_manual(values = c("Haplotypes" = "darkgreen", "Samples" = "purple"), name = "Metric") +
   facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
@@ -390,7 +456,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_haplo_samples_vertical <- data_haplo_samples %>%
+    group_by(chromosome, metric) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_value = lead(value)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
+    geom_segment(data = data_haplo_samples_vertical,
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 linewidth = 0.5, alpha = 0.9)
+}
+
+p_combined_haplo_samples_wide <- p_combined_haplo_samples_wide +
   scale_color_manual(values = c("Haplotypes" = "darkgreen", "Samples" = "purple"), name = "Metric") +
   facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
   
@@ -478,7 +565,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_num_chromosomes <- p_num_chromosomes +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_vertical <- data %>%
+    group_by(chromosome) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_num_chromosomes = lead(num_chromosomes)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_num_chromosomes <- p_num_chromosomes +
+    geom_segment(data = data_vertical,
+                 aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                 color = "darkorange", linewidth = 0.8)
+}
+
+p_num_chromosomes <- p_num_chromosomes +
   facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 6), limits = c(0, NA)) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6),
@@ -526,7 +634,28 @@ if (!is.null(bed_regions)) {
 }
 
 p_num_chromosomes_wide <- p_num_chromosomes_wide +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.5, alpha = 0.9) +
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.5, alpha = 0.9)
+
+# Add vertical connecting lines if enabled
+if (add_vertical) {
+  # Create vertical connectors between consecutive windows
+  data_vertical <- data %>%
+    group_by(chromosome) %>%
+    arrange(start_mbp) %>%
+    mutate(
+      next_start = lead(start_mbp),
+      next_num_chromosomes = lead(num_chromosomes)
+    ) %>%
+    filter(!is.na(next_start)) %>%
+    ungroup()
+  
+  p_num_chromosomes_wide <- p_num_chromosomes_wide +
+    geom_segment(data = data_vertical,
+                 aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                 color = "darkorange", linewidth = 0.5, alpha = 0.9)
+}
+
+p_num_chromosomes_wide <- p_num_chromosomes_wide +
   facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
   
   scale_x_continuous(
@@ -654,8 +783,26 @@ plot_single_chromosome <- function(data,
   }
   
   p <- p +
-    geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8, alpha = 0.9) +
+    geom_segment(aes(x = start_mbp, xend = end_mbp, y = num_chromosomes, yend = num_chromosomes), color = "darkorange", linewidth = 0.8, alpha = 0.9)
+  
+  # Add vertical connecting lines if enabled
+  if (exists("add_vertical") && add_vertical) {
+    # Create vertical connectors between consecutive windows
+    data_chr_vertical <- data_chr %>%
+      arrange(start_mbp) %>%
+      mutate(
+        next_start = lead(start_mbp),
+        next_num_chromosomes = lead(num_chromosomes)
+      ) %>%
+      filter(!is.na(next_start))
     
+    p <- p +
+      geom_segment(data = data_chr_vertical,
+                   aes(x = end_mbp, xend = next_start, y = num_chromosomes, yend = next_num_chromosomes),
+                   color = "darkorange", linewidth = 0.8, alpha = 0.9)
+  }
+  
+  p <- p +
     # Set x-axis limits based on specified range
     scale_x_continuous(
       limits = c(start_mbp, end_mbp),
@@ -693,12 +840,12 @@ plot_single_chromosome <- function(data,
 }
 
 # General function to create chromosome matching heatmap
-plot_chromosome_matching_heatmap <- function(data, 
-                                             target_chr = "chr1", 
-                                             start_mbp = NULL, 
-                                             end_mbp = NULL,
-                                             highlight_regions = TRUE,
-                                             output_filename = NULL) {
+plot_chromosome_binary_matching_heatmap <- function(data, 
+                                                    target_chr = "chr1", 
+                                                    start_mbp = NULL, 
+                                                    end_mbp = NULL,
+                                                    highlight_regions = TRUE,
+                                                    output_filename = NULL) {
   
   # Filter for the target chromosome
   chr_data <- data %>%
@@ -867,15 +1014,15 @@ plot_chromosome_matching_heatmap <- function(data,
   return(p_heatmap)
 }
 
-plot_chromosome_matching_heatmap2 <- function(data, 
-                                              target_chr = "chr1", 
-                                              start_mbp = NULL, 
-                                              end_mbp = NULL,
-                                              bed_regions = NULL,
-                                              highlight_regions = TRUE,
-                                              show_numbers = "auto",  # "auto", "always", "never"
-                                              number_threshold = 30,  # max windows to show numbers
-                                              output_filename = NULL) {
+plot_chromosome_count_matching_heatmap <- function(data, 
+                                                   target_chr = "chr1", 
+                                                   start_mbp = NULL, 
+                                                   end_mbp = NULL,
+                                                   bed_regions = NULL,
+                                                   highlight_regions = TRUE,
+                                                   show_numbers = "auto",  # "auto", "always", "never"
+                                                   number_threshold = 30,  # max windows to show numbers
+                                                   output_filename = NULL) {
   
   # Filter for the target chromosome
   chr_data <- data %>%
@@ -1497,14 +1644,14 @@ plot_single_chromosome(data,
                        bed_regions = bed_regions)
 
 # Binary matching heatmap
-plot_chromosome_matching_heatmap(data, 
+plot_chromosome_binary_matching_heatmap(data, 
                                  target_chr = "chr1",
                                  start_mbp = 0, 
                                  end_mbp = 10,
                                  )
 
 # Haplotype count heatmap - full chromosome
-plot_chromosome_matching_heatmap2(data, 
+plot_chromosome_count_matching_heatmap(data, 
                                   target_chr = "chr1",
                                   start_mbp = 0, 
                                   end_mbp = 10,
