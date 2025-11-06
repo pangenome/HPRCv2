@@ -607,7 +607,9 @@ p_num_chromosomes <- p_num_chromosomes +
     legend.position = "bottom",
     legend.title = element_text(size = 15, face = "bold")
   ) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.7)
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray30", alpha = 0.7) +
+  annotate("text", x = 0, y = 1, label = "1", 
+         color = "gray30", hjust = +2.0, vjust = -0.5, size = 3)
 
 ggsave(
   filename = paste0("p_chromosomes_across_chm13.", window_size, ".pdf"),
