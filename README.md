@@ -10,23 +10,15 @@ Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang
 
 ## Implicit pangenome graph
 
-To build the [IMPG](https://github.com/pangenome/impg) indexes, you need to generate the bgzip indexes first with the following commands:
+Build the IMPG indexes with the following commands:
 
 ```bash
-bgzip -r hprc25272.aln.paf.gz
-bgzip -r hprc465vschm13.aln.paf.gz
-bgzip -r hprc465vsgrch38.aln.paf.gz
-```
-
-Then run the following commands to create the [IMPG](https://github.com/pangenome/impg) indexes:
-
-```bash
-impg index -p hprc25272.aln.paf.gz
+impg index -p hprc25272.aln.paf.gz # it will take a while
 impg index -p hprc465vschm13.aln.paf.gz
 impg index -p hprc465vsgrch38.aln.paf.gz
 ```
 
-Keep the IMPG and bgzip indexes in the same directory as the corresponding PAF files, and then you can query the pangenome alignment with [IMPG](https://github.com/pangenome/impg).
+For simplicity, keep the IMPG indexes in the same directory as the corresponding PAF files, and then you can query the pangenome alignment with [IMPG](https://github.com/pangenome/impg).
 
 ### What you can do with an implicit pangenome graph
 
@@ -163,11 +155,12 @@ Use `scripts/plot-impg-coverage.R` to plot coverage statistics:
 
 ![Impg coverage - Samples/Haplotypes](./images/hprc25272.CHM13.w100k.samples-haplotypes.png)
 
-## Explicit pangenome graph
+## Explicit pangenome graphs
 
-Get the explicit whole-pangenome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/.
+Get the explicit whole-genome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/whole-genome.
+Get the explicit chromosome-specific PGGB-graphs at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/by-chromosome.
 
 ## Variants
 
-Get the whole-pangenome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/.
-
+Get the whole-genome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/whole-genome/.
+Get the chromosome-specific PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/by-chromosome.

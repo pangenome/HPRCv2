@@ -7,7 +7,7 @@ library(tidyr)
 library(readr)
 
 # Optional: Set BED file path here (set to NULL if no BED file)
-bed_file_path <- 'chm13-annotations.bed'  # Change this to your BED file path
+bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'  # Change this to your BED file path
 
 # Function to read and process BED file
 read_bed_regions <- function(bed_path) {
@@ -69,7 +69,7 @@ if (!is.null(bed_regions)) {
 window_size <- '100kb'
 num_haplo <- 466
 num_sample <- 234
-data <- read_tsv(paste0("hprc25272.CHM13.w", window_size, "-xm5-id098-l5k.tsv.gz"))
+data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272.CHM13.w", window_size, "-xm5-id098-l5k.tsv.gz"))
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
