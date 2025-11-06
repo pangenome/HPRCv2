@@ -6,6 +6,79 @@ library(dplyr)
 library(tidyr)
 library(readr)
 
+# Parameters for images
+width <- 16
+height <- 9
+dpi <- 300
+
+# Read the data
+window_size <- '1Mb'
+num_haplo <- 466
+num_sample <- 234
+data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.", window_size, "-xm5-id098-l5000.tsv.gz"))
+
+# Parse the chroms-num_haplotypes column to extract chromosome information
+parse_chroms_column <- function(chroms_str) {
+  if (is.na(chroms_str) || chroms_str == "") {
+    return(list(num_chromosomes = 0, chromosomes = NA))
+  }
+  
+  # Split by comma
+  pairs <- strsplit(chroms_str, ",")[[1]]
+  
+  # Extract chromosome names (everything before the last hyphen)
+  chrom_names <- sapply(pairs, function(x) {
+    parts <- strsplit(x, "-")[[1]]
+    # Join all but the last part (in case chromosome name contains hyphen)
+    paste(parts[-length(parts)], collapse = "-")
+  })
+  
+  # Remove any whitespace
+  chrom_names <- trimws(chrom_names)
+  
+  return(list(
+    num_chromosomes = length(unique(chrom_names)),
+    chromosomes = paste(unique(chrom_names), collapse = ",")
+  ))
+}
+
+# Apply parsing to the entire dataset
+parsed_data <- lapply(data$`chroms-num_haplotypes`, parse_chroms_column)
+data$num_chromosomes <- sapply(parsed_data, function(x) x$num_chromosomes)
+data$chromosomes <- sapply(parsed_data, function(x) x$chromosomes)
+rm(parsed_data)
+
+# Extract chromosome information from the chrom column
+data <- data %>%
+  mutate(
+    chromosome = gsub("CHM13#0#(chr[^\\s]+).*", "\\1", chrom),
+    # Extract just the number/letter from the chromosome
+    chrom_num = gsub("chr([0-9XYM]+)", "\\1", chromosome)
+  ) %>%
+  # Create numeric position for sorting (X, Y, M at the end)
+  left_join(
+    tibble(
+      chrom_num = c(as.character(1:22), "X", "Y", "M"),
+      chrom_order = c(1:22, 23, 24, 25)
+    ),
+    by = "chrom_num"
+  )
+
+# Create a position variable for x-axis that represents the bin midpoint
+data <- data %>%
+  mutate(position = (start + end) / 2 / 1e6)  # Convert to Mbp
+
+# Reorder the factor levels to ensure chromosomes are in the correct order
+data$chromosome <- factor(data$chromosome, levels = c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
+
+# First reshape the data to long format for the first combined plot (alignments)
+data_alignments <- data %>%
+  pivot_longer(
+    cols = c(num_alignments, num_alignments_merged),
+    names_to = "metric",
+    values_to = "value"
+  )
+
 # Optional: Set BED file path here (set to NULL if no BED file)
 bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'  # Change this to your BED file path
 
@@ -43,6 +116,10 @@ bed_regions <- read_bed_regions(bed_file_path) %>%
 
 # Create color palette for BED regions if they exist
 if (!is.null(bed_regions)) {
+  cat("\nBED regions loaded successfully!\n")
+  cat("Number of regions:", nrow(bed_regions), "\n")
+  cat("Chromosomes covered:", paste(unique(bed_regions$chromosome), collapse = ", "), "\n\n")
+  
   unique_labels <- unique(bed_regions$name)
   n_labels <- length(unique_labels)
   
@@ -63,81 +140,17 @@ if (!is.null(bed_regions)) {
   for (i in 1:length(bed_colors)) {
     cat(names(bed_colors)[i], ":", bed_colors[i], "\n")
   }
+  
+  # If BED regions exist, ensure they have the same factor levels
+  bed_regions$chromosome <- factor(bed_regions$chromosome, levels = levels(data$chromosome))
+} else {
+  cat("\nNo BED file loaded. To add region annotations, set bed_file_path to your BED file.\n\n")
 }
 
-# Read the data
-window_size <- '100kb'
-num_haplo <- 466
-num_sample <- 234
-data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272.CHM13.w", window_size, "-xm5-id098-l5k.tsv.gz"))
 
-# Parse the chroms-num_haplotypes column to extract chromosome information
-parse_chroms_column <- function(chroms_str) {
-  if (is.na(chroms_str) || chroms_str == "") {
-    return(list(num_chromosomes = 0, chromosomes = NA))
-  }
-  
-  # Split by comma
-  pairs <- strsplit(chroms_str, ",")[[1]]
-  
-  # Extract chromosome names (everything before the last hyphen)
-  chrom_names <- sapply(pairs, function(x) {
-    parts <- strsplit(x, "-")[[1]]
-    # Join all but the last part (in case chromosome name contains hyphen)
-    paste(parts[-length(parts)], collapse = "-")
-  })
-  
-  # Remove any whitespace
-  chrom_names <- trimws(chrom_names)
-  
-  return(list(
-    num_chromosomes = length(unique(chrom_names)),
-    chromosomes = paste(unique(chrom_names), collapse = ",")
-  ))
-}
-
-# Apply parsing to the entire dataset
-parsed_data <- lapply(data$`chroms-num_haplotypes`, parse_chroms_column)
-data$num_chromosomes <- sapply(parsed_data, function(x) x$num_chromosomes)
-data$chromosomes <- sapply(parsed_data, function(x) x$chromosomes)
-
-# Extract chromosome information from the chrom column
-data <- data %>%
-  mutate(
-    chromosome = gsub("CHM13#0#(chr[^\\s]+).*", "\\1", chrom),
-    # Extract just the number/letter from the chromosome
-    chrom_num = gsub("chr([0-9XYM]+)", "\\1", chromosome),
-    # Create numeric position for sorting (X, Y, M at the end)
-    chrom_order = case_when(
-      chrom_num == "X" ~ 23,
-      chrom_num == "Y" ~ 24,
-      chrom_num == "M" ~ 25,
-      TRUE ~ as.numeric(chrom_num)
-    )
-  )
-
-# Reorder the factor levels to ensure chromosomes are in the correct order
-data$chromosome <- factor(data$chromosome, 
-                          levels = c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
-
-# If BED regions exist, ensure they have the same factor levels
-if (!is.null(bed_regions)) {
-  bed_regions$chromosome <- factor(bed_regions$chromosome, 
-                                   levels = levels(data$chromosome))
-}
-
-# Create a position variable for x-axis that represents the bin midpoint
-data <- data %>%
-  mutate(position = (start + end) / 2 / 1e6)  # Convert to Mbp
-
-# First reshape the data to long format for the first combined plot (alignments)
-data_alignments <- data %>%
-  pivot_longer(
-    cols = c(num_alignments, num_alignments_merged),
-    names_to = "metric",
-    values_to = "value"
-  )
-
+#===============================================================================
+# Alignments across CHM13
+#========================
 # Create a more informative legend for alignments
 data_alignments$metric <- factor(data_alignments$metric,
                                  levels = c("num_alignments", "num_alignments_merged"),
@@ -146,7 +159,7 @@ data_alignments$metric <- factor(data_alignments$metric,
 # Hide not merged alignments
 data_alignments <- data_alignments %>% filter(metric == "Alignments")
 
-# Create combined alignments plot with BED regions
+# Create combined alignments plot
 p_combined_alignments <- ggplot(data_alignments, aes(x = position, y = value, color = metric, group = metric))
 
 # Add BED regions if available (use log scale appropriate limits)
@@ -187,6 +200,20 @@ p_combined_alignments <- p_combined_alignments +
     axis.title = element_text(size = 14)
   )
 
+ggsave(
+  filename = paste0("p_alignments_across_chm13.", window_size, ".pdf"),
+  plot = p_combined_alignments,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+#===============================================================================
+
+#===============================================================================
+# Num. sample/haplotypes across CHM13
+#====================================
 # Reshape data for the second combined plot (haplotypes and samples)
 data_haplo_samples <- data %>%
   pivot_longer(
@@ -250,7 +277,6 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
 
 # Get the levels from the original data to ensure consistent factor levels
 chrom_levels <- levels(data_haplo_samples$chromosome)
-
 # Create a dataframe for the chrX horizontal line
 chrX_line_data <- data.frame(
   yintercept = 348,
@@ -279,6 +305,20 @@ p_combined_haplo_samples <- p_combined_haplo_samples +
             inherit.aes = FALSE,
             color = "black", hjust = +0.9, vjust = +1.5, size = 3)
 
+ggsave(
+  filename = paste0("p_samples-haplotypes_across_chm13.", window_size, ".pdf"),
+  plot = p_combined_alignments,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
+#===============================================================================
+
+#===============================================================================
+# Num. chromosomes across CHM13
+#==============================
 # Create p_num_chromosomes plot with BED regions
 p_num_chromosomes <- ggplot(data, aes(x = position, y = num_chromosomes))
 
@@ -316,6 +356,16 @@ p_num_chromosomes <- p_num_chromosomes +
     legend.title = element_text(size = 15, face = "bold")
   ) +
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray50", alpha = 0.7)
+
+ggsave(
+  filename = paste0("p_chromosomes_across_chm13.", window_size, ".pdf"),
+  plot = p_num_chromosomes,
+  width = width,
+  height = height,
+  dpi = dpi,
+  units = "in",
+  bg = "white"
+)
 
 # Create p_num_chromosomes_wide plot with BED regions
 p_num_chromosomes_wide <- ggplot(data, aes(x = position, y = num_chromosomes))
@@ -373,55 +423,8 @@ p_num_chromosomes_wide <- p_num_chromosomes_wide +
     legend.title = element_text(size = 15, face = "bold")
   )
 
-# Print summary of BED regions if loaded
-if (!is.null(bed_regions)) {
-  cat("\nBED regions loaded successfully!\n")
-  cat("Number of regions:", nrow(bed_regions), "\n")
-  cat("Chromosomes covered:", paste(unique(bed_regions$chromosome), collapse = ", "), "\n\n")
-} else {
-  cat("\nNo BED file loaded. To add region annotations, set bed_file_path to your BED file.\n\n")
-}
-
-# Print the plots
-print(p_combined_alignments)
-print(p_combined_haplo_samples)
-print(p_num_chromosomes)
-print(p_num_chromosomes_wide)
-
-width=16
-height=9
-dpi=300
-
-# Save the plots
 ggsave(
-  filename = "p_combined_alignments.pdf",
-  plot = p_combined_alignments,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = "p_combined_haplo_samples.pdf",
-  plot = p_combined_haplo_samples,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = "p_num_chromosomes.pdf",
-  plot = p_num_chromosomes,
-  width = width,
-  height = height,
-  dpi = dpi,
-  units = "in",
-  bg = "white"
-)
-ggsave(
-  filename = "p_num_chromosomes_wide.pdf",
+  filename = paste0("p_chromosomes_across_chm13_wide", window_size, ".pdf"),
   plot = p_num_chromosomes_wide,
   width = width,
   height = height,
@@ -429,6 +432,7 @@ ggsave(
   units = "in",
   bg = "white"
 )
+#===============================================================================
 
 # Function to create a single chromosome plot with specified range
 plot_single_chromosome <- function(data, 
