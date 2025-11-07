@@ -18,7 +18,7 @@ add_vertical <- TRUE  # Set to FALSE to disable vertical connecting lines
 window_size <- '1Mb'
 num_haplo <- 466
 num_sample <- 234
-data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.", window_size, "-xm5-id098-l5000.tsv.gz"))
+data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.", window_size, "-xm5-id098-l8000.tsv.gz"))
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -1904,11 +1904,11 @@ plot_genome_wide_identity_heatmap <- function(data,
     ) +
     labs(
       title = paste0("Genome-wide alignment identity patterns (", window_size, " windows)"),
-      subtitle = paste0("Average identity per matching chromosome (range: ",
-                        sprintf("%.3f", identity_min), "-", sprintf("%.3f", identity_max), ")"),
+      #subtitle = paste0("Average identity per matching chromosome (range: ",
+      #                  sprintf("%.3f", identity_min), "-", sprintf("%.3f", identity_max), ")"),
       x = "Position (Mbp)",
       y = "Target chromosome",
-      caption = "Matching chromosomes (Y-axis within each panel, top to bottom):\nchr1  chr2  chr3  chr4  chr5  chr6  chr7  chr8  chr9  chr10  chr11  chr12\nchr13  chr14  chr15  chr16  chr17  chr18  chr19  chr20  chr21  chr22  chrX  chrY  chrM"
+      #caption = "Matching chromosomes (Y-axis within each panel, top to bottom)"
     ) +
     theme_minimal() +
     theme(
@@ -1979,10 +1979,11 @@ plot_genome_wide_identity_heatmap <- function(data,
 
 # Create and save the genome-wide identity heatmap
 plots <- plot_genome_wide_identity_heatmap(data, bed_regions = bed_regions)
+print(plots$main)
+
 # Load cowplot for inset functionality
 library(cowplot)
 # Save version WITHOUT inset
-print(plots$main)
 ggsave(
   filename = "p_genome_wide_identity_heatmap_no_inset.pdf",
   plot = plots$main,
