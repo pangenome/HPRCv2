@@ -17,12 +17,12 @@ add_vertical <- F  # Set to FALSE to disable vertical connecting lines
 # Read the data
 prefix <- 'hprc25272' # hprc25272 or hprc7524
 suffix <- 'wf' # wf or fg
-window_size <- '5kb'
+window_size <- '100kb'
 l_size <- '10000'
 num_haplo <- 466
 num_sample <- 234
 #data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/", prefix, "-", suffix, ".CHM13.", window_size, "-xm5-id098-l", l_size, ".tsv.gz"))
-data <- read_tsv("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.5kb-xm5-id098-l4000-begin-end.1Mb.tsv.gz")
+data <- read_tsv("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.100kb-xm5-id098-l50000.tsv.gz")
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -169,6 +169,14 @@ data_alignments$metric <- factor(data_alignments$metric,
 # Hide not merged alignments
 data_alignments <- data_alignments %>% filter(metric == "Alignments")
 
+# Add coverage category for coloring (relative to expected 466 haplotypes)
+data_alignments <- data_alignments %>%
+  mutate(coverage_cat = case_when(
+    value == num_haplo ~ "= 466",
+    value > num_haplo ~ "> 466",
+    value < num_haplo ~ "< 466"
+  ))
+
 # Create combined alignments plot
 p_combined_alignments <- ggplot(data_alignments)
 
@@ -176,14 +184,14 @@ p_combined_alignments <- ggplot(data_alignments)
 if (!is.null(bed_regions)) {
   p_combined_alignments <- p_combined_alignments +
     geom_rect(data = bed_regions,
-              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 1, ymax = Inf, fill = name),
               inherit.aes = FALSE,
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_alignments <- p_combined_alignments +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5)
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = coverage_cat), linewidth = 0.5)
 
 # Add vertical connecting lines if enabled
 if (add_vertical) {
@@ -200,13 +208,13 @@ if (add_vertical) {
   
   p_combined_alignments <- p_combined_alignments +
     geom_segment(data = data_alignments_vertical,
-                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = coverage_cat),
                  linewidth = 0.5)
 }
 
 p_combined_alignments <- p_combined_alignments +
-  scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
-  facet_wrap(~ chromosome, scales = "free_x", ncol = 5) +
+  scale_color_manual(values = c("= 466" = "black", "> 466" = "red", "< 466" = "blue"), name = "Coverage") +
+  facet_wrap(~ chromosome, scales = "free", ncol = 5) +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
   scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
@@ -247,14 +255,14 @@ p_combined_alignments_wide <- ggplot(data_alignments)
 if (!is.null(bed_regions)) {
   p_combined_alignments_wide <- p_combined_alignments_wide +
     geom_rect(data = bed_regions,
-              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0.1, ymax = 1e8, fill = name),
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 1, ymax = Inf, fill = name),
               inherit.aes = FALSE,
               alpha = 0.2) +
     scale_fill_manual(values = bed_colors, name = "Region")
 }
 
 p_combined_alignments_wide <- p_combined_alignments_wide +
-  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = metric), linewidth = 0.5, alpha = 0.9)
+  geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = coverage_cat), linewidth = 0.5, alpha = 0.9)
 
 # Add vertical connecting lines if enabled
 if (add_vertical) {
@@ -271,22 +279,22 @@ if (add_vertical) {
   
   p_combined_alignments_wide <- p_combined_alignments_wide +
     geom_segment(data = data_alignments_vertical,
-                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = metric),
+                 aes(x = end_mbp, xend = next_start, y = value, yend = next_value, color = coverage_cat),
                  linewidth = 0.5, alpha = 0.9)
 }
 
 p_combined_alignments_wide <- p_combined_alignments_wide +
-  scale_color_manual(values = c("Alignments" = "black"), name = "Metric") +
-  facet_grid(chromosome ~ ., scales = "free_x", switch = "y") +
+  scale_color_manual(values = c("= 466" = "black", "> 466" = "red", "< 466" = "blue"), name = "Coverage") +
+  facet_grid(chromosome ~ ., scales = "free", switch = "y") +
   
   scale_x_continuous(
     breaks = seq(0, 300, 50),
     expand = c(0.01, 0)
   ) +
-  
+
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  
+
   labs(
     title = paste0("Alignments across CHM13 (", window_size, " windows)"),
     x = "Position (Mbp)",
@@ -319,6 +327,178 @@ ggsave(
   units = "in",
   bg = "white"
 )
+
+# Function to create wide alignments plot for a subset of chromosomes
+plot_alignments_wide <- function(data_alignments,
+                                  bed_regions = NULL,
+                                  chromosomes = NULL,
+                                  window_size = "50kb",
+                                  num_haplo = 466,
+                                  log_scale = FALSE,
+                                  ylim_quantile = NULL) {
+  # ylim_quantile: NULL for full range, or c(0.01, 0.99) to use 1st-99th percentile
+
+  # Default to all chromosomes if not specified
+  if (is.null(chromosomes)) {
+    chromosomes <- c(paste0("chr", 1:22), "chrX", "chrY", "chrM")
+  }
+
+  # DEBUG: Print input data info
+  cat("=== DEBUG: Input data_alignments ===\n")
+  cat("Columns:", paste(names(data_alignments), collapse = ", "), "\n")
+  cat("Unique chromosomes in input:", paste(unique(data_alignments$chromosome), collapse = ", "), "\n")
+  cat("Any NA in chromosome?", any(is.na(data_alignments$chromosome)), "\n")
+  cat("Chromosome levels:", paste(levels(data_alignments$chromosome), collapse = ", "), "\n\n")
+
+  # Filter data to specified chromosomes and remove NAs
+  # Use base R subsetting for reliable filtering
+  plot_data <- data_alignments[as.character(data_alignments$chromosome) %in% chromosomes, ]
+
+  cat("=== DEBUG: After filtering ===\n")
+  cat("Rows after filter:", nrow(plot_data), "\n")
+  cat("Unique chromosomes after filter:", paste(unique(plot_data$chromosome), collapse = ", "), "\n\n")
+
+  # Ensure chromosome factor levels match the subset and drop unused levels
+  plot_data$chromosome <- factor(plot_data$chromosome, levels = chromosomes)
+  plot_data <- droplevels(plot_data)
+
+  cat("=== DEBUG: After factor/droplevels ===\n")
+  cat("Chromosome levels:", paste(levels(plot_data$chromosome), collapse = ", "), "\n")
+  cat("Any NA in chromosome?", any(is.na(plot_data$chromosome)), "\n\n")
+
+  # Add coverage category (filter out NA values first)
+  plot_data <- plot_data %>%
+    filter(!is.na(value)) %>%
+    mutate(coverage_cat = case_when(
+      value == num_haplo ~ paste0("= ", num_haplo),
+      value > num_haplo ~ paste0("> ", num_haplo),
+      TRUE ~ paste0("< ", num_haplo)
+    ))
+
+  cat("=== DEBUG: Final plot_data ===\n")
+  cat("Rows:", nrow(plot_data), "\n")
+  cat("Unique chromosomes:", paste(unique(plot_data$chromosome), collapse = ", "), "\n")
+  cat("Chromosome levels:", paste(levels(plot_data$chromosome), collapse = ", "), "\n")
+  cat("Any NA in chromosome?", any(is.na(plot_data$chromosome)), "\n")
+  cat("Unique coverage_cat:", paste(unique(plot_data$coverage_cat), collapse = ", "), "\n\n")
+
+  # Print y-range (min/max value) per chromosome
+  cat("=== DEBUG: Y-range (value) per chromosome ===\n")
+  y_range_summary <- plot_data %>%
+    group_by(chromosome) %>%
+    summarise(
+      min_val = min(value, na.rm = TRUE),
+      max_val = max(value, na.rm = TRUE),
+      q01 = quantile(value, 0.01, na.rm = TRUE),
+      q99 = quantile(value, 0.99, na.rm = TRUE),
+      mean_val = round(mean(value, na.rm = TRUE), 1),
+      n_points = n(),
+      .groups = "drop"
+    )
+  print(as.data.frame(y_range_summary))
+  cat("\n")
+
+  # Compute y-axis limits based on quantiles if requested
+  ylim_values <- NULL
+  if (!is.null(ylim_quantile)) {
+    ylim_values <- quantile(plot_data$value, ylim_quantile, na.rm = TRUE)
+    cat("=== DEBUG: Using quantile-based y-limits ===\n")
+    cat("Quantiles:", ylim_quantile[1], "-", ylim_quantile[2], "\n")
+    cat("Y-limits:", ylim_values[1], "-", ylim_values[2], "\n\n")
+  }
+
+  # Create plot
+  p <- ggplot(plot_data)
+
+  # Add BED regions if available
+  if (!is.null(bed_regions)) {
+    bed_filtered <- bed_regions %>%
+      filter(chromosome %in% chromosomes, !is.na(chromosome))
+    bed_filtered$chromosome <- factor(bed_filtered$chromosome, levels = chromosomes)
+    bed_filtered <- droplevels(bed_filtered)
+
+    if (nrow(bed_filtered) > 0) {
+      ymin_val <- ifelse(log_scale, 1, 0)
+      p <- p +
+        geom_rect(data = bed_filtered,
+                  aes(xmin = start_mbp, xmax = end_mbp, ymin = ymin_val, ymax = Inf, fill = name),
+                  inherit.aes = FALSE,
+                  alpha = 0.2) +
+        scale_fill_manual(values = bed_colors, name = "Region")
+    }
+  }
+
+  p <- p +
+    geom_segment(aes(x = start_mbp, xend = end_mbp, y = value, yend = value, color = coverage_cat),
+                 linewidth = 0.5, alpha = 0.9) +
+    scale_color_manual(
+      values = setNames(
+        c("black", "red", "blue"),
+        c(paste0("= ", num_haplo), paste0("> ", num_haplo), paste0("< ", num_haplo))
+      ),
+      name = "Coverage"
+    ) +
+    facet_grid(chromosome ~ ., scales = "free", switch = "y", drop = TRUE) +
+    scale_x_continuous(
+      breaks = seq(0, 300, 50),
+      expand = c(0.01, 0)
+    )
+
+  # Add y-scale based on log_scale parameter
+  if (log_scale) {
+    p <- p +
+      scale_y_log10(limits = ylim_values,
+                    breaks = scales::trans_breaks("log10", function(x) 10^x),
+                    labels = scales::trans_format("log10", scales::math_format(10^.x)),
+                    oob = scales::squish) +
+      labs(
+        title = paste0("Alignments across CHM13 (", window_size, " windows)"),
+        x = "Position (Mbp)",
+        y = "Alignments (log scale)"
+      )
+  } else {
+    p <- p +
+      scale_y_continuous(limits = ylim_values, oob = scales::squish) +
+      labs(
+        title = paste0("Alignments across CHM13 (", window_size, " windows)"),
+        x = "Position (Mbp)",
+        y = "Alignments"
+      )
+  }
+
+  p <- p +
+    theme_minimal() +
+    theme(
+      strip.text.y = element_text(size = 8, angle = 0),
+      strip.background = element_rect(fill = "gray95", color = NA),
+      strip.placement = "outside",
+      axis.text.y = element_text(size = 6),
+      axis.text.x = element_text(size = 6),
+      axis.title = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(color = "gray90", linewidth = 0.2),
+      panel.spacing = unit(0.05, "lines"),
+      legend.position = "right",
+      legend.title = element_text(size = 15, face = "bold")
+    )
+
+  return(p)
+}
+
+# Example usage:
+# Full range (default)
+plot_alignments_wide(data_alignments, bed_regions, chromosomes = c("chr1"), log_scale = T)
+
+# Ignore outliers using 1st-99th percentile
+plot_alignments_wide(data_alignments, bed_regions,
+                     chromosomes = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8"),
+                     ylim_quantile = c(0.01, 0.99), log_scale = T)
+
+# Tighter range
+plot_alignments_wide(data_alignments, bed_regions, chromosomes = c("chr1"),
+                     ylim_quantile = c(0.02, 0.98), log_scale = T)
 #===============================================================================
 
 #===============================================================================
@@ -1969,10 +2149,26 @@ plot_genome_wide_identity_heatmap <- function(data,
 
     # Add NA placeholders for chromosomes missing begin or end regions
     # This ensures all chromosomes have the same x-axis range (0 to begin_mbp + end_region_mbp)
-    all_chroms <- unique(heatmap_data$chromosome)
+    # Important: Get all chromosomes from the ORIGINAL data, not just filtered data
+    # This ensures chromosomes with no data (like chrY with small regions) still appear
+    all_chroms_in_data <- unique(data$chromosome)
+
+    # Determine which chromosomes to include (respecting hide_chrM setting)
+    all_chroms <- if (hide_chrM) {
+      all_chroms_in_data[all_chroms_in_data != "chrM"]
+    } else {
+      all_chroms_in_data
+    }
+
     all_matching_chroms <- unique(heatmap_data$matching_chromosome)
 
-    # For each chromosome, check if it has data in both regions
+    # If no matching chromosomes (all data filtered out), use standard chromosome list
+    if (length(all_matching_chroms) == 0) {
+      all_matching_chroms <- c(paste0("chr", 1:22), "chrX", "chrY")
+      if (!hide_chrM) all_matching_chroms <- c(all_matching_chroms, "chrM")
+    }
+
+    # For each chromosome (from original data, not just filtered)
     placeholders <- list()
     for (chr in all_chroms) {
       chr_data <- heatmap_data %>% filter(chromosome == chr)
@@ -2309,13 +2505,14 @@ ggsave(
   bg = "white"
 )
 
+# Start/End
 plots <- plot_genome_wide_identity_heatmap(
   data,
   min_avg_identity = 0.98,
   min_contigs = 30,
   show_begin_end_only = TRUE,
-  begin_mbp = 1,
-  end_region_mbp = 1,
+  begin_mbp = 0.25,
+  end_region_mbp = 0.25,
   hide_chrM = TRUE 
 )
 print(plots$main)
