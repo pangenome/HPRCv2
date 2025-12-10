@@ -12,17 +12,17 @@ height <- 10
 dpi <- 300
 
 # Control whether to add vertical lines connecting consecutive windows
-add_vertical <- F  # Set to FALSE to disable vertical connecting lines
+add_vertical <- T  # Set to FALSE to disable vertical connecting lines
 
 # Read the data
 prefix <- 'hprc25272' # hprc25272 or hprc7524
 suffix <- 'wf' # wf or fg
 window_size <- '100kb'
-l_size <- '10000'
+l_size <- '50000'
 num_haplo <- 466
 num_sample <- 234
 #data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/", prefix, "-", suffix, ".CHM13.", window_size, "-xm5-id098-l", l_size, ".tsv.gz"))
-data <- read_tsv("/home/guarracino/Desktop/Garrison/HPRCv2/hprc25272-wf.CHM13.100kb-xm5-id098-l50000.tsv.gz")
+data <- read_tsv("data/hprc25272-wf.CHM13.100kb-xm5-id098-l50000.tsv.gz")
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -91,7 +91,7 @@ data_alignments <- data %>%
   )
 
 # Optional: Set BED file path here (set to NULL if no BED file)
-bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'  # Change this to your BED file path
+bed_file_path <- 'data/chm13-annotations.bed'  # Change this to your BED file path
 
 # Function to read and process BED file
 read_bed_regions <- function(bed_path) {
@@ -493,12 +493,16 @@ plot_alignments_wide(data_alignments, bed_regions, chromosomes = c("chr1"), log_
 
 # Ignore outliers using 1st-99th percentile
 plot_alignments_wide(data_alignments, bed_regions,
-                     chromosomes = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8"),
+                     chromosomes = c(
+                       "chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8",
+                       "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16",
+                       "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY"
+                       ),
                      ylim_quantile = c(0.01, 0.99), log_scale = T)
 
 # Tighter range
 plot_alignments_wide(data_alignments, bed_regions, chromosomes = c("chr1"),
-                     ylim_quantile = c(0.02, 0.98), log_scale = T)
+                     ylim_quantile = c(0.01, 0.99), log_scale = T)
 #===============================================================================
 
 #===============================================================================
