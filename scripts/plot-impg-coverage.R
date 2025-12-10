@@ -489,10 +489,11 @@ plot_alignments_wide <- function(data_alignments,
 
 # Example usage:
 # Full range (default)
-plot_alignments_wide(data_alignments, bed_regions, chromosomes = c("chr1"), log_scale = T)
+plot_alignments_wide(data_alignments, bed_regions, window_size, chromosomes = c("chr1"), log_scale = T)
 
 # Ignore outliers using 1st-99th percentile
 plot_alignments_wide(data_alignments, bed_regions,
+                     window_size,
                      chromosomes = c(
                        "chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8",
                        "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16",
