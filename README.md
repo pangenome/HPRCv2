@@ -3,7 +3,7 @@ pangenome alignment, implicit/explicit graph, and variants for human pangenome p
 
 ## Pangenome alignment
 
-Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang/wfmash):
+Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang/wfmash) (`wfmash -p 95 -P inf`) at:
 - 25221 pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz
 - 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vschm13.aln.paf.gz
 - 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vsgrch38.aln.paf.gz
