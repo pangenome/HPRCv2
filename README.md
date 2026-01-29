@@ -13,9 +13,9 @@ Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang
 Build the IMPG indexes with the following commands:
 
 ```bash
-impg index -p hprc25272.aln.paf.gz # it will take a while
-impg index -p hprc465vschm13.aln.paf.gz
-impg index -p hprc465vsgrch38.aln.paf.gz
+impg index -a hprc25272.aln.paf.gz # it will take a while
+impg index -a hprc465vschm13.aln.paf.gz
+impg index -a hprc465vsgrch38.aln.paf.gz
 ```
 
 For simplicity, keep the IMPG indexes in the same directory as the corresponding PAF files, and then you can query the pangenome alignment with [IMPG](https://github.com/pangenome/impg).
@@ -27,7 +27,7 @@ For simplicity, keep the IMPG indexes in the same directory as the corresponding
 Get a region-of-interest (ROI) pangenome:
 
 ```bash
-impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr8:5748405-13676927 --merge-distance 1000000 -v 1 > hprcv2.human8p23-1.bed
+impg query -a hprc25272.aln.paf.gz -r GRCh38#0#chr8:5748405-13676927 --merge-distance 1000000 -v 1 > hprcv2.human8p23-1.bed
 
 awk '$3-$2>=2000000' hprcv2.human8p23-1.bed | sort | head | column -t
     CHM13#0#chr8                 7491000  11605998  GRCh38#0#chr8:5748405-13676927  .  -
@@ -48,7 +48,7 @@ Make a ROI explicit pangenome graph with [PGGB](https://github.com/pangenome/pgg
 
 ```bash
 ls /lizardfs/guarracino/pangenomes/HPRCv2/*.fa.gz > hprcv2.fasta-paths.txt # prepare a list of FASTA files for the pangenome sequence
-impg query -p hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --fasta-list hprcv2.fasta-paths.txt -v 1 | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz # get the ROI pangenome in FASTA format
+impg query -a hprc25272.aln.paf.gz -r GRCh38#0#chr6:31972057-32055418 -o fasta --sequence-list hprcv2.fasta-paths.txt -v 1 | bgzip -l 9 -@ 16 > hprc25272.C4.fa.gz # get the ROI pangenome in FASTA format
 samtools faidx hprc25272.C4.fa.gz # index the ROI FASTA file
 pggb -i hprc25272.C4.fa.gz -o pggb.hprc25272.C4 # build the ROI pangenome graph with PGGB
 ```
@@ -62,7 +62,7 @@ This is the resulting graph visualized with [ODGI](https://github.com/pangenome/
 Compute haplotype pairwise similarity in a ROI pangenome:
 
 ```bash
-impg similarity -p hprc25272.aln.paf.gz -r GRCh38#0#chr11:69809968-69819416 --fasta-list hprcv2.fasta-paths.txt --delim '#' --delim-pos 2 -v 1 > hprc25272.FGF3C4.similarity.tsv # use the --delim and --delim-pos options to get sample#haplotype_id (PanSN-spec)
+impg similarity -a hprc25272.aln.paf.gz -r GRCh38#0#chr11:69809968-69819416 --sequence-list hprcv2.fasta-paths.txt --delim '#' --delim-pos 2 -v 1 > hprc25272.FGF3C4.similarity.tsv # use the --delim and --delim-pos options to get sample#haplotype_id (PanSN-spec)
 
 head hprc25272.FGF3C4.similarity.tsv | column -t
     chrom           start     end       group.a    group.b    group.a.length  group.b.length  intersection  jaccard.similarity  cosine.similarity  dice.similarity  estimated.identity
@@ -93,7 +93,7 @@ Partition the pangenome by using CHM13 chromosomes as starting sequences:
 
 ```bash
 cut -f 1 chm13v2.0_maskedY_rCRS.fa.PanSN.fa.gz.fai > starting-sequences.txt # prepare the list of starting sequences
-impg partition -p hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min-missing-size 10000 --merge-distance 1000000  --min-transitive-len 1000 --starting-sequences-file starting-sequences.txt    --selection-mode total --output-folder partitions -t 32 -v 1
+impg partition -a hprc25272.aln.paf.gz --window-size 1000000 --max-depth 5 --min-missing-size 10000 --merge-distance 1000000  --min-transitive-len 1000 --starting-sequences-file starting-sequences.txt    --selection-mode total --output-folder partitions -t 32 -v 1
 ```
 
 The latter command was used to partition the whole HPRCv2 pangenome, build explicit pangenome graphs for each partition with PGGB, and lace all partition-specific graphs into a single "explicit" pangenome graph with [impg lace](https://github.com/pangenome/impg).
@@ -124,7 +124,7 @@ Run pangenome queries:
 mkdir -p impg-query-output_w100k
 awk '{print $1":"$2"-"$3" "$1"_"$2"_"$3}' $name.w100k.bed | \
 parallel -j 24 --colsep ' ' \
-  "impg query --paf-files /scratch/hprc25272.aln.paf.gz -r {1} -t 1 -o bedpe | gzip -9 > impg-query-output_w100k/{2}.bedpe.gz"
+  "impg query -a /scratch/hprc25272.aln.paf.gz -r {1} -t 1 -o bedpe | gzip -9 > impg-query-output_w100k/{2}.bedpe.gz"
 ```
 
 Collect statistics:
