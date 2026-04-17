@@ -5,6 +5,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(readr)
+library(ggnewscale)
 
 # Parameters for images
 width <- 16
@@ -22,7 +23,7 @@ l_size <- '50000'
 num_haplo <- 466
 num_sample <- 234
 #data <- read_tsv(paste0("/home/guarracino/Desktop/Garrison/HPRCv2/", prefix, "-", suffix, ".CHM13.", window_size, "-xm5-id098-l", l_size, ".tsv.gz"))
-data <- read_tsv("data/hprc25272-wf.CHM13.100kb-xm5-id098-l50000.tsv.gz")
+data <- read_tsv("/home/guarracino/Dropbox/git/HPRCv2/data/hprc25272-wf.CHM13.100kb-xm5-id098-l50000.tsv.gz")
 
 # Parse the chroms-num_haplotypes column to extract chromosome information
 parse_chroms_column <- function(chroms_str) {
@@ -91,7 +92,7 @@ data_alignments <- data %>%
   )
 
 # Optional: Set BED file path here (set to NULL if no BED file)
-bed_file_path <- 'data/chm13-annotations.bed'  # Change this to your BED file path
+bed_file_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13-annotations.bed'  # Change this to your BED file path
 
 # Function to read and process BED file
 read_bed_regions <- function(bed_path) {
@@ -896,6 +897,698 @@ ggsave(
   units = "in",
   bg = "white"
 )
+#===============================================================================
+
+#===============================================================================
+# Inter-chromosomal mapping karyogram
+#======================================
+# Parse chroms-num_haplotypes to get inter-chromosomal (non-self) mapping info
+# For each window, identify which OTHER chromosomes have alignments there
+
+parse_interchrom <- function(data) {
+  all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+
+  # Initialize matrix: rows = windows, cols = chromosomes
+  count_matrix <- matrix(0L,
+                         nrow = nrow(data),
+                         ncol = length(all_chroms),
+                         dimnames = list(NULL, all_chroms))
+
+  for (i in 1:nrow(data)) {
+    raw <- data$`chroms-num_haplotypes`[i]
+    if (is.na(raw) || raw == "") next
+
+    pairs <- strsplit(raw, ",")[[1]]
+    for (pair in pairs) {
+      parts <- strsplit(trimws(pair), "-")[[1]]
+      if (length(parts) >= 2) {
+        chr_name <- paste(parts[-length(parts)], collapse = "-")
+        count <- as.numeric(parts[length(parts)])
+        if (chr_name %in% all_chroms && !is.na(count)) {
+          count_matrix[i, chr_name] <- count
+        }
+      }
+    }
+  }
+
+  return(count_matrix)
+}
+
+cat("Parsing inter-chromosomal mapping data...\n")
+interchrom_counts <- parse_interchrom(data)
+
+# For each window, zero out the self-chromosome column and compute:
+#   - num_other_chroms: how many OTHER chromosomes have alignments
+#   - which_other_chroms: comma-separated list of those chromosomes
+#   - total_other_haplotypes: sum of haplotypes from other chromosomes
+all_chroms <- paste0("chr", c(1:22, "X", "Y", "M"))
+
+data$num_other_chroms <- 0L
+data$total_other_haplotypes <- 0L
+data$which_other_chroms <- NA_character_
+
+for (i in 1:nrow(data)) {
+  self_chr <- data$chromosome[i]
+  counts_i <- interchrom_counts[i, ]
+  # Zero out self
+  if (!is.na(self_chr) && self_chr %in% all_chroms) {
+    counts_i[self_chr] <- 0
+  }
+  nonzero <- counts_i[counts_i > 0]
+  data$num_other_chroms[i] <- length(nonzero)
+  data$total_other_haplotypes[i] <- sum(nonzero)
+  if (length(nonzero) > 0) {
+    data$which_other_chroms[i] <- paste(names(nonzero), collapse = ",")
+  }
+}
+
+cat("Inter-chromosomal parsing complete.\n")
+cat("  Windows with inter-chrom mappings:", sum(data$num_other_chroms > 0), "/", nrow(data), "\n")
+cat("  Max other chromosomes in a single window:", max(data$num_other_chroms), "\n\n")
+
+# Prepare karyogram data (used by multiple plots below)
+karyogram_chrom_levels <- rev(c(paste0("chr", 1:22), "chrX", "chrY", "chrM"))
+
+karyogram_data <- data %>%
+  filter(!is.na(chromosome)) %>%
+  mutate(chromosome = factor(chromosome, levels = karyogram_chrom_levels))
+
+max_other <- max(karyogram_data$num_other_chroms, na.rm = TRUE)
+
+# Prepare BED annotations for karyogram-style plots (chromosomes on Y axis)
+# Map each annotation region to the numeric Y position of its chromosome
+bed_karyogram <- NULL
+if (!is.null(bed_regions)) {
+  bed_karyogram <- bed_regions %>%
+    filter(!is.na(chromosome)) %>%
+    mutate(chromosome = factor(chromosome, levels = karyogram_chrom_levels)) %>%
+    filter(!is.na(chromosome)) %>%
+    mutate(chrom_y = as.numeric(chromosome))
+}
+
+# Assign a rainbow color palette to the 25 chromosomes (natural order)
+chrom_rainbow <- setNames(
+  scales::hue_pal()(length(all_chroms)),
+  all_chroms
+)
+
+
+# --- Plot 1: Karyogram colored by number of inter-chromosomal mappings ---
+# Each CHM13 chromosome as a compact horizontal bar, colored by how many OTHER
+# chromosomes have alignments mapping to that window.
+
+p_karyogram_count <- ggplot(karyogram_data)
+
+if (!is.null(bed_karyogram)) {
+  p_karyogram_count <- p_karyogram_count +
+    geom_rect(data = bed_karyogram,
+              aes(xmin = start_mbp, xmax = end_mbp,
+                  ymin = chrom_y - 0.45, ymax = chrom_y + 0.45,
+                  fill = name),
+              inherit.aes = FALSE, alpha = 0.3) +
+    scale_fill_manual(values = bed_colors, name = "Region") +
+    new_scale_fill()
+}
+
+p_karyogram_count <- p_karyogram_count +
+  geom_rect(aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = as.numeric(chromosome) - 0.4,
+                ymax = as.numeric(chromosome) + 0.4,
+                fill = num_other_chroms)) +
+  scale_fill_gradientn(
+    colors = c("grey95", "#fee08b", "#fc8d59", "#d73027", "#67001f"),
+    values = scales::rescale(c(0, 1, 3, 8, max(max_other, 10))),
+    limits = c(0, max_other),
+    breaks = scales::pretty_breaks(n = 5),
+    name = "# other\nchromosomes"
+  ) +
+  scale_x_continuous(breaks = seq(0, 300, 50), expand = c(0.01, 0)) +
+  scale_y_continuous(
+    breaks = 1:length(levels(karyogram_data$chromosome)),
+    labels = levels(karyogram_data$chromosome),
+    expand = c(0.02, 0)
+  ) +
+  labs(
+    title = paste0("Inter-chromosomal mappings across CHM13 (", window_size, " windows)"),
+    subtitle = "Number of distinct OTHER chromosomes with alignments in each window",
+    x = "Position (Mbp)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "bold"),
+    axis.text.x = element_text(size = 9),
+    axis.title = element_text(size = 11),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linewidth = 0.2),
+    legend.position = "right",
+    legend.key.height = unit(1.2, "cm"),
+    legend.title = element_text(size = 10, face = "bold")
+  )
+
+ggsave(
+  filename = paste0("p_interchrom_karyogram_count.", window_size, ".pdf"),
+  plot = p_karyogram_count,
+  width = 16, height = 8, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_karyogram_count.", window_size, ".pdf\n")
+
+
+# --- Plot 2: Per-chromosome faceted stacked bar showing WHICH other chromosomes map ---
+# For each CHM13 chromosome (facet row), for each window, a stacked bar where
+# the height fractions are colored by source chromosome (rainbow palette).
+
+# Build long-format data: window x matching_chromosome x count, excluding self
+interchrom_long <- cbind(
+  data %>% select(chromosome, start_mbp, end_mbp, position),
+  interchrom_counts
+) %>%
+  as.data.frame() %>%
+  pivot_longer(cols = all_of(all_chroms),
+               names_to = "matching_chr",
+               values_to = "haplo_count") %>%
+  # Remove self-matches
+  filter(chromosome != matching_chr) %>%
+  # Keep only non-zero for efficiency in plotting
+  filter(haplo_count > 0) %>%
+  # Factor matching_chr in natural chromosome order for legend
+  mutate(matching_chr = factor(matching_chr, levels = all_chroms))
+
+# Prepare data: for each window+chromosome facet, compute fraction of each other chr
+interchrom_stacked <- interchrom_long %>%
+  group_by(chromosome, start_mbp, end_mbp) %>%
+  mutate(
+    total = sum(haplo_count),
+    frac = haplo_count / total
+  ) %>%
+  ungroup() %>%
+  arrange(chromosome, start_mbp, factor(matching_chr, levels = all_chroms))
+
+# Compute cumulative fractions for stacking
+interchrom_stacked <- interchrom_stacked %>%
+  group_by(chromosome, start_mbp) %>%
+  mutate(
+    ymax = cumsum(frac),
+    ymin = ymax - frac
+  ) %>%
+  ungroup()
+
+chrom_levels_fwd <- c(paste0("chr", 1:22), "chrX", "chrY", "chrM")
+interchrom_stacked$chromosome <- factor(interchrom_stacked$chromosome, levels = chrom_levels_fwd)
+
+p_karyogram_rainbow <- ggplot(interchrom_stacked)
+
+if (!is.null(bed_regions)) {
+  bed_facet <- bed_regions %>%
+    filter(!is.na(chromosome)) %>%
+    mutate(chromosome = factor(chromosome, levels = chrom_levels_fwd)) %>%
+    filter(!is.na(chromosome))
+  p_karyogram_rainbow <- p_karyogram_rainbow +
+    geom_rect(data = bed_facet,
+              aes(xmin = start_mbp, xmax = end_mbp, ymin = 0, ymax = 1, fill = name),
+              inherit.aes = FALSE, alpha = 0.2) +
+    scale_fill_manual(values = bed_colors, name = "Region") +
+    new_scale_fill()
+}
+
+p_karyogram_rainbow <- p_karyogram_rainbow +
+  geom_rect(aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = ymin, ymax = ymax,
+                fill = matching_chr)) +
+  facet_grid(chromosome ~ ., switch = "y") +
+  scale_fill_manual(values = chrom_rainbow, name = "Source\nchromosome") +
+  scale_x_continuous(breaks = seq(0, 300, 50), expand = c(0.01, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(
+    title = paste0("Inter-chromosomal mapping sources across CHM13 (", window_size, " windows)"),
+    subtitle = "Proportional contribution of each OTHER chromosome's haplotypes per window",
+    x = "Position (Mbp)",
+    y = "Fraction of inter-chromosomal haplotypes"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text.y.left = element_text(size = 8, angle = 0),
+    strip.background = element_rect(fill = "gray95", color = NA),
+    strip.placement = "outside",
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(size = 8),
+    axis.title = element_text(size = 10),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    panel.grid = element_blank(),
+    panel.spacing = unit(0.05, "lines"),
+    legend.position = "right",
+    legend.key.size = unit(0.4, "cm"),
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 7)
+  )
+
+ggsave(
+  filename = paste0("p_interchrom_karyogram_rainbow.", window_size, ".pdf"),
+  plot = p_karyogram_rainbow,
+  width = 16, height = 10, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_karyogram_rainbow.", window_size, ".pdf\n")
+
+
+# --- Plot 3: Karyogram colored by total inter-chromosomal haplotype count ---
+# Similar to Plot 1 but using total haplotype count from other chromosomes
+# (intensity of inter-chromosomal signal, not just diversity)
+
+p_karyogram_haplo <- ggplot(karyogram_data)
+
+if (!is.null(bed_karyogram)) {
+  p_karyogram_haplo <- p_karyogram_haplo +
+    geom_rect(data = bed_karyogram,
+              aes(xmin = start_mbp, xmax = end_mbp,
+                  ymin = chrom_y - 0.45, ymax = chrom_y + 0.45,
+                  fill = name),
+              inherit.aes = FALSE, alpha = 0.3) +
+    scale_fill_manual(values = bed_colors, name = "Region") +
+    new_scale_fill()
+}
+
+p_karyogram_haplo <- p_karyogram_haplo +
+  geom_rect(aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = as.numeric(chromosome) - 0.4,
+                ymax = as.numeric(chromosome) + 0.4,
+                fill = total_other_haplotypes)) +
+  scale_fill_gradientn(
+    colors = c("grey95", "#c6dbef", "#6baed6", "#2171b5", "#08306b"),
+    values = scales::rescale(c(0, 10, 100, 500, max(karyogram_data$total_other_haplotypes, na.rm = TRUE))),
+    limits = c(0, max(karyogram_data$total_other_haplotypes, na.rm = TRUE)),
+    breaks = scales::pretty_breaks(n = 5),
+    name = "# haplotypes\nfrom other chr",
+    trans = "sqrt"
+  ) +
+  scale_x_continuous(breaks = seq(0, 300, 50), expand = c(0.01, 0)) +
+  scale_y_continuous(
+    breaks = 1:length(levels(karyogram_data$chromosome)),
+    labels = levels(karyogram_data$chromosome),
+    expand = c(0.02, 0)
+  ) +
+  labs(
+    title = paste0("Inter-chromosomal haplotype depth across CHM13 (", window_size, " windows)"),
+    subtitle = "Total haplotypes from OTHER chromosomes in each window",
+    x = "Position (Mbp)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "bold"),
+    axis.text.x = element_text(size = 9),
+    axis.title = element_text(size = 11),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linewidth = 0.2),
+    legend.position = "right",
+    legend.key.height = unit(1.2, "cm"),
+    legend.title = element_text(size = 10, face = "bold")
+  )
+
+ggsave(
+  filename = paste0("p_interchrom_karyogram_haplo.", window_size, ".pdf"),
+  plot = p_karyogram_haplo,
+  width = 16, height = 8, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_karyogram_haplo.", window_size, ".pdf\n")
+
+
+# --- Plot 4: Karyogram with rainbow-colored count ---
+# Same compact bar layout as Plot 1, but the number of other chromosomes is
+# shown as a discrete rainbow palette (spectral) instead of a sequential gradient.
+
+# Bin num_other_chroms into discrete categories for rainbow coloring
+count_breaks <- c(0, 1, 2, 3, 4, 5, 7, 10, 15, Inf)
+count_labels <- c("0", "1", "2", "3", "4", "5", "6-7", "8-10", "11+")
+# Adjust labels to match actual max
+if (max_other < 11) {
+  count_breaks <- c(0, 1, 2, 3, 4, 5, 7, 10, max_other + 1)
+  count_labels <- c("0", "1", "2", "3", "4", "5", "6-7", paste0("8-", max_other))
+}
+
+karyogram_data$count_bin <- cut(
+  karyogram_data$num_other_chroms,
+  breaks = count_breaks,
+  labels = count_labels,
+  include.lowest = TRUE, right = FALSE
+)
+
+# Spectral-like rainbow for count bins (cool to warm)
+n_bins <- length(count_labels)
+count_rainbow <- setNames(
+  c("grey90", scales::hue_pal(h = c(240, 0))(n_bins - 1)),
+  count_labels
+)
+
+p_karyogram_count_rainbow <- ggplot(karyogram_data)
+
+if (!is.null(bed_karyogram)) {
+  p_karyogram_count_rainbow <- p_karyogram_count_rainbow +
+    geom_rect(data = bed_karyogram,
+              aes(xmin = start_mbp, xmax = end_mbp,
+                  ymin = chrom_y - 0.45, ymax = chrom_y + 0.45,
+                  fill = name),
+              inherit.aes = FALSE, alpha = 0.3) +
+    scale_fill_manual(values = bed_colors, name = "Region") +
+    new_scale_fill()
+}
+
+p_karyogram_count_rainbow <- p_karyogram_count_rainbow +
+  geom_rect(aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = as.numeric(chromosome) - 0.4,
+                ymax = as.numeric(chromosome) + 0.4,
+                fill = count_bin)) +
+  scale_fill_manual(values = count_rainbow, name = "# other\nchromosomes") +
+  scale_x_continuous(breaks = seq(0, 300, 50), expand = c(0.01, 0)) +
+  scale_y_continuous(
+    breaks = 1:length(levels(karyogram_data$chromosome)),
+    labels = levels(karyogram_data$chromosome),
+    expand = c(0.02, 0)
+  ) +
+  labs(
+    title = paste0("Inter-chromosomal mappings across CHM13 (", window_size, " windows)"),
+    subtitle = "Number of distinct OTHER chromosomes with alignments — rainbow palette",
+    x = "Position (Mbp)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "bold"),
+    axis.text.x = element_text(size = 9),
+    axis.title = element_text(size = 11),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linewidth = 0.2),
+    legend.position = "right",
+    legend.key.size = unit(0.5, "cm"),
+    legend.title = element_text(size = 10, face = "bold"),
+    legend.text = element_text(size = 8)
+  )
+
+ggsave(
+  filename = paste0("p_interchrom_karyogram_count_rainbow.", window_size, ".pdf"),
+  plot = p_karyogram_count_rainbow,
+  width = 16, height = 8, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_karyogram_count_rainbow.", window_size, ".pdf\n")
+
+
+# --- Plot 5: Ideogram-style karyogram with CHM13 Giemsa banding ---
+# Uses real cytobands from chm13v2.0_cytobands_allchrs.bed for proper banding.
+# Centromere regions (acen) create a constriction; bands are colored by gieStain.
+# Inter-chromosomal data is overlaid as a colored track above the ideogram.
+
+# Read CHM13 cytoband file
+cytoband_path <- '/home/guarracino/Dropbox/git/HPRCv2/data/chm13v2.0_cytobands_allchrs.bed'
+cytobands <- read_tsv(cytoband_path,
+                      col_names = c("chrom", "start", "end", "band_name", "stain"),
+                      col_types = "cddcc") %>%
+  mutate(start_mbp = start / 1e6, end_mbp = end / 1e6)
+
+# Giemsa stain colors (standard cytogenetic coloring)
+stain_colors <- c(
+  "gneg"    = "white",
+  "gpos25"  = "grey75",
+  "gpos50"  = "grey50",
+  "gpos75"  = "grey30",
+  "gpos100" = "black",
+  "acen"    = "firebrick3",
+  "stalk"   = "slategray3",
+  "gvar"    = "grey40"
+)
+
+chrom_order <- c(paste0("chr", 1:22), "chrX", "chrY", "chrM")
+
+# Get chromosome lengths from cytobands (more accurate than data windows)
+chrom_lengths <- cytobands %>%
+  group_by(chrom) %>%
+  summarize(length_mbp = max(end_mbp), .groups = "drop")
+
+# Get centromere midpoints for constriction
+cen_info <- cytobands %>%
+  filter(stain == "acen") %>%
+  group_by(chrom) %>%
+  summarize(cen_start = min(start_mbp), cen_end = max(end_mbp),
+            cen_mid = (min(start_mbp) + max(end_mbp)) / 2, .groups = "drop")
+
+# Build cytoband rectangles clipped to ideogram shape
+# For each band, compute the half-height at that position
+# (narrower near centromere, full width elsewhere)
+half_height <- 0.35
+cen_pinch <- 0.06
+
+cyto_rects <- cytobands %>%
+  filter(chrom %in% chrom_order) %>%
+  left_join(cen_info, by = "chrom") %>%
+  mutate(
+    chrom_y = length(chrom_order) - match(chrom, chrom_order) + 1,
+    # For each band, compute height at its midpoint relative to centromere
+    band_mid = (start_mbp + end_mbp) / 2,
+    # Distance from centromere midpoint, normalized by centromere half-width
+    cen_half_w = (cen_end - cen_start) / 2,
+    dist_from_cen = ifelse(is.na(cen_mid), Inf,
+                           pmax(0, abs(band_mid - cen_mid) - cen_half_w)),
+    # Smooth transition: pinch at centromere, full height away from it
+    # Use a logistic-like ramp over ~2 Mbp
+    ramp = pmin(1, dist_from_cen / 2),
+    band_half = cen_pinch + (half_height - cen_pinch) * ramp
+  )
+
+# Build chromosome outline polygons with centromere constriction
+build_ideogram_outline <- function(chr, chr_len, cen_s, cen_e, y_center,
+                                   hh = 0.35, cp = 0.06, n_pts = 60) {
+  # Generate x positions along the chromosome
+  xs <- seq(0, chr_len, length.out = n_pts)
+
+  if (!is.na(cen_s) && !is.na(cen_e)) {
+    cen_m <- (cen_s + cen_e) / 2
+    cen_hw <- (cen_e - cen_s) / 2
+    # Height function: smooth constriction at centromere
+    dist <- pmax(0, abs(xs - cen_m) - cen_hw)
+    ramp <- pmin(1, dist / 2)
+    heights <- cp + (hh - cp) * ramp
+  } else {
+    heights <- rep(hh, length(xs))
+  }
+
+  data.frame(
+    x = c(xs, rev(xs)),
+    y = c(y_center + heights, y_center - rev(heights)),
+    chromosome = chr
+  )
+}
+
+ideogram_polys <- do.call(rbind, lapply(seq_along(chrom_order), function(idx) {
+  chr <- chrom_order[idx]
+  y_pos <- length(chrom_order) - idx + 1
+  len <- chrom_lengths$length_mbp[chrom_lengths$chrom == chr]
+  if (length(len) == 0) return(NULL)
+  cen_row <- cen_info %>% filter(chrom == chr)
+  cen_s <- if (nrow(cen_row) > 0) cen_row$cen_start[1] else NA
+  cen_e <- if (nrow(cen_row) > 0) cen_row$cen_end[1] else NA
+  build_ideogram_outline(chr, len, cen_s, cen_e, y_center = y_pos,
+                         hh = half_height, cp = cen_pinch)
+}))
+
+# Layout: each chromosome gets a y-slot of width 1.0
+# - Ideogram band: thin (half_height=0.12), centered at chrom_y + 0.22 (upper part)
+# - Data track: bar below, centered at chrom_y - 0.15 (lower part), max half = 0.22
+ideo_band_hh <- 0.12   # ideogram half-height (thin)
+ideo_band_pinch <- 0.03
+data_track_offset <- -0.15
+data_track_max_hh <- 0.22
+
+# Rebuild cytoband rects and outlines with thin ideogram dimensions
+ideo_offset <- 0.22  # ideogram center offset above chrom_y
+
+cyto_rects <- cyto_rects %>%
+  mutate(
+    # Recompute band_half for thin ideogram
+    dist_from_cen2 = ifelse(is.na(cen_mid), Inf,
+                            pmax(0, abs(band_mid - cen_mid) - cen_half_w)),
+    ramp2 = pmin(1, dist_from_cen2 / 2),
+    band_half_thin = ideo_band_pinch + (ideo_band_hh - ideo_band_pinch) * ramp2
+  )
+
+# Rebuild outline polygons with thin dimensions
+ideogram_polys <- do.call(rbind, lapply(seq_along(chrom_order), function(idx) {
+  chr <- chrom_order[idx]
+  y_pos <- length(chrom_order) - idx + 1 + ideo_offset
+  len <- chrom_lengths$length_mbp[chrom_lengths$chrom == chr]
+  if (length(len) == 0) return(NULL)
+  cen_row <- cen_info %>% filter(chrom == chr)
+  cen_s <- if (nrow(cen_row) > 0) cen_row$cen_start[1] else NA
+  cen_e <- if (nrow(cen_row) > 0) cen_row$cen_end[1] else NA
+  build_ideogram_outline(chr, len, cen_s, cen_e, y_center = y_pos,
+                         hh = ideo_band_hh, cp = ideo_band_pinch)
+}))
+
+# Prepare data track
+ideo_data <- data %>%
+  filter(!is.na(chromosome), chromosome %in% chrom_order) %>%
+  left_join(cen_info, by = c("chromosome" = "chrom")) %>%
+  mutate(
+    chrom_y = length(chrom_order) - match(chromosome, chrom_order) + 1,
+    data_y = chrom_y + data_track_offset,
+    # Data bar: fixed max height, scaled by value
+    bar_half = data_track_max_hh * pmin(num_other_chroms / max(max_other, 1), 1)
+  )
+
+# Helper: shared ideogram theme
+ideo_theme <- theme_minimal() +
+  theme(
+    axis.text.y = element_text(size = 9, face = "bold"),
+    axis.text.x = element_text(size = 9),
+    axis.title = element_text(size = 11),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linewidth = 0.2),
+    legend.position = "right",
+    legend.title = element_text(size = 10, face = "bold")
+  )
+
+ideo_scales <- list(
+  scale_x_continuous(breaks = seq(0, 250, 50), expand = c(0.01, 0)),
+  scale_y_continuous(
+    breaks = seq_along(chrom_order),
+    labels = rev(chrom_order),
+    expand = c(0.02, 0)
+  ),
+  coord_cartesian(xlim = c(-1, max(chrom_lengths$length_mbp, na.rm = TRUE) + 1))
+)
+
+
+# --- Ideogram + gradient count ---
+p_ideogram_count <- ggplot() +
+  # Cytoband fill (thin band, offset above center)
+  geom_rect(data = cyto_rects,
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = chrom_y + ideo_offset - band_half_thin,
+                ymax = chrom_y + ideo_offset + band_half_thin),
+            fill = stain_colors[cyto_rects$stain], color = NA) +
+  # Chromosome outline
+  geom_polygon(data = ideogram_polys,
+               aes(x = x, y = y, group = chromosome),
+               fill = NA, color = "grey30", linewidth = 0.3) +
+  # Data track (below ideogram)
+  geom_rect(data = ideo_data %>% filter(num_other_chroms > 0),
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = data_y - bar_half, ymax = data_y + bar_half,
+                fill = num_other_chroms)) +
+  scale_fill_gradientn(
+    colors = c("#fee08b", "#fc8d59", "#d73027", "#67001f"),
+    limits = c(1, max_other),
+    breaks = scales::pretty_breaks(n = 5),
+    name = "# other\nchromosomes"
+  ) +
+  ideo_scales +
+  labs(
+    title = paste0("Inter-chromosomal mappings — CHM13 ideogram (", window_size, " windows)"),
+    subtitle = "Ideogram with Giemsa banding (top); data track (bottom) — bar height and color by # other chromosomes",
+    x = "Position (Mbp)", y = NULL
+  ) +
+  ideo_theme +
+  theme(legend.key.height = unit(1.2, "cm"))
+
+ggsave(
+  filename = paste0("p_interchrom_ideogram_count.", window_size, ".pdf"),
+  plot = p_ideogram_count,
+  width = 16, height = 10, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_ideogram_count.", window_size, ".pdf\n")
+
+
+# --- Ideogram + rainbow discrete count ---
+ideo_data$count_bin <- cut(
+  ideo_data$num_other_chroms,
+  breaks = count_breaks, labels = count_labels,
+  include.lowest = TRUE, right = FALSE
+)
+
+p_ideogram_rainbow <- ggplot() +
+  geom_rect(data = cyto_rects,
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = chrom_y + ideo_offset - band_half_thin,
+                ymax = chrom_y + ideo_offset + band_half_thin),
+            fill = stain_colors[cyto_rects$stain], color = NA) +
+  geom_polygon(data = ideogram_polys,
+               aes(x = x, y = y, group = chromosome),
+               fill = NA, color = "grey30", linewidth = 0.3) +
+  geom_rect(data = ideo_data %>% filter(num_other_chroms > 0),
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = data_y - bar_half, ymax = data_y + bar_half,
+                fill = count_bin)) +
+  scale_fill_manual(values = count_rainbow[count_labels != "0"],
+                    name = "# other\nchromosomes", drop = FALSE) +
+  ideo_scales +
+  labs(
+    title = paste0("Inter-chromosomal mappings — CHM13 ideogram (", window_size, " windows)"),
+    subtitle = "Ideogram with Giemsa banding (top); data track (bottom) — rainbow palette",
+    x = "Position (Mbp)", y = NULL
+  ) +
+  ideo_theme +
+  theme(legend.key.size = unit(0.5, "cm"))
+
+ggsave(
+  filename = paste0("p_interchrom_ideogram_rainbow.", window_size, ".pdf"),
+  plot = p_ideogram_rainbow,
+  width = 16, height = 10, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_ideogram_rainbow.", window_size, ".pdf\n")
+
+
+# --- Ideogram + haplotype depth ---
+ideo_data <- ideo_data %>%
+  mutate(bar_half_haplo = data_track_max_hh *
+           pmin(total_other_haplotypes / max(total_other_haplotypes, na.rm = TRUE), 1))
+
+p_ideogram_haplo <- ggplot() +
+  geom_rect(data = cyto_rects,
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = chrom_y + ideo_offset - band_half_thin,
+                ymax = chrom_y + ideo_offset + band_half_thin),
+            fill = stain_colors[cyto_rects$stain], color = NA) +
+  geom_polygon(data = ideogram_polys,
+               aes(x = x, y = y, group = chromosome),
+               fill = NA, color = "grey30", linewidth = 0.3) +
+  geom_rect(data = ideo_data %>% filter(total_other_haplotypes > 0),
+            aes(xmin = start_mbp, xmax = end_mbp,
+                ymin = data_y - bar_half_haplo, ymax = data_y + bar_half_haplo,
+                fill = total_other_haplotypes)) +
+  scale_fill_gradientn(
+    colors = c("#c6dbef", "#6baed6", "#2171b5", "#08306b"),
+    limits = c(1, max(ideo_data$total_other_haplotypes, na.rm = TRUE)),
+    breaks = scales::pretty_breaks(n = 5),
+    name = "# haplotypes\nfrom other chr",
+    trans = "sqrt"
+  ) +
+  ideo_scales +
+  labs(
+    title = paste0("Inter-chromosomal haplotype depth — CHM13 ideogram (", window_size, " windows)"),
+    subtitle = "Ideogram with Giemsa banding (top); data track (bottom) — total haplotypes from other chromosomes",
+    x = "Position (Mbp)", y = NULL
+  ) +
+  ideo_theme +
+  theme(legend.key.height = unit(1.2, "cm"))
+
+ggsave(
+  filename = paste0("p_interchrom_ideogram_haplo.", window_size, ".pdf"),
+  plot = p_ideogram_haplo,
+  width = 16, height = 10, dpi = dpi, units = "in", bg = "white"
+)
+cat("Saved p_interchrom_ideogram_haplo.", window_size, ".pdf\n")
+
 #===============================================================================
 
 # Function to create a single chromosome plot with specified range
