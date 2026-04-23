@@ -278,7 +278,7 @@ p_karyogram_count <- p_karyogram_count +
     subtitle = NULL,
     x = "Position (Mbp)",
     y = NULL,
-    caption = "Number of distinct other chromosomes with alignments per 100kb window across CHM13"
+    caption = NULL
   ) +
   theme_minimal() +
   theme(
@@ -571,22 +571,25 @@ cat("Inset chr1:  ", n_chr_inset2, "chroms, height =", round(inset2_height, 3), 
 right_left <- 0.79
 right_right <- 0.97
 
+# Vertical base offset for all three insets (lower = further down)
+inset_base_y <- -0.01
+
 # Inset3 (chr13): placed to the LEFT of the right column, centered vertically
 # between inset1 (top) and inset2 (bottom)
 n_chr_inset3 <- length(chroms_with_signal3_ordered)
 inset3_height <- 0.40
-inset3_top <- 0.02 + inset1_height + gap / 2 + inset3_height / 2
+inset3_top <- inset_base_y + inset1_height + gap / 2 + inset3_height / 2
 inset3_bottom <- inset3_top - inset3_height
 
 p_karyogram_count_with_inset <- p_karyogram_count_main +
   inset_element(p_inset2,
                 left = right_left, right = right_right,
-                bottom = 0.02 + inset1_height + gap,
-                top = 0.02 + inset1_height + gap + inset2_height) +
+                bottom = inset_base_y + inset1_height + gap,
+                top = inset_base_y + inset1_height + gap + inset2_height) +
   inset_element(p_inset,
                 left = right_left, right = right_right,
-                bottom = 0.02,
-                top = 0.02 + inset1_height) +
+                bottom = inset_base_y,
+                top = inset_base_y + inset1_height) +
   inset_element(p_inset3,
                 left = 0.59, right = 0.77,
                 bottom = inset3_bottom, top = inset3_top)
@@ -672,7 +675,7 @@ p_karyogram_count_rainbow <- p_karyogram_count_rainbow +
     title = NULL, subtitle = NULL,
     x = "Position (Mbp)",
     y = NULL,
-    caption = "Number of distinct other chromosomes with alignments per 100kb window across CHM13"
+    caption = NULL
   ) +
   theme_minimal() +
   theme(
@@ -718,12 +721,12 @@ p_karyogram_count_rainbow_main <- p_karyogram_count_rainbow +
 p_karyogram_count_rainbow_with_inset <- p_karyogram_count_rainbow_main +
   inset_element(p_inset2,
                 left = right_left, right = right_right,
-                bottom = 0.02 + inset1_height + gap,
-                top = 0.02 + inset1_height + gap + inset2_height) +
+                bottom = inset_base_y + inset1_height + gap,
+                top = inset_base_y + inset1_height + gap + inset2_height) +
   inset_element(p_inset,
                 left = right_left, right = right_right,
-                bottom = 0.02,
-                top = 0.02 + inset1_height) +
+                bottom = inset_base_y,
+                top = inset_base_y + inset1_height) +
   inset_element(p_inset3,
                 left = 0.59, right = 0.77,
                 bottom = inset3_bottom, top = inset3_top)
