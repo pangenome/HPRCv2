@@ -8,6 +8,8 @@ Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang
 - 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vschm13.aln.paf.gz
 - 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vsgrch38.aln.paf.gz
 
+The same alignments are also available in [TPA (TracePoint Alignment)](https://github.com/AndreaGuarracino/tpa) format (466 files, one per target-haplotype) at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/tpas/.
+
 ## Implicit pangenome graph
 
 Build the IMPG indexes with the following commands:
