@@ -4,11 +4,11 @@ pangenome alignment, implicit/explicit graph, and variants for human pangenome p
 ## Pangenome alignment
 
 Get the pangenome alignment generated with [WFMASH](https://github.com/waveygang/wfmash) (`wfmash -p 95 -P inf`) at:
-- 25221 pairwise alignments at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc25272.aln.paf.gz
-- 465 haplotype vs CHM13 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vschm13.aln.paf.gz
-- 465 haplotype vs GRCh38 at https://garrisonlab.s3.amazonaws.com/hprcv2/pafs/hprc465vsgrch38.aln.paf.gz
+- 25221 pairwise alignments at https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/impg/pafs/hprc25272.aln.paf.gz
+- 465 haplotype vs CHM13 at https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/impg/pafs/hprc465vschm13.aln.paf.gz
+- 465 haplotype vs GRCh38 at https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/impg/pafs/hprc465vsgrch38.aln.paf.gz
 
-The same alignments are also available in [TPA (TracePoint Alignment)](https://github.com/AndreaGuarracino/tpa) format (466 files, one per target-haplotype) at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/tpas/.
+The same alignments are also available in [TPA (TracePoint Alignment)](https://github.com/AndreaGuarracino/tpa) format (466 files, one per target-haplotype) at https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=pangenomes/freeze/release2/impg/tpas/.
 
 ## Implicit pangenome graph
 
@@ -159,10 +159,10 @@ Use `scripts/plot-impg-coverage.R` to plot coverage statistics:
 
 ## Explicit pangenome graphs
 
-Get the explicit whole-genome PGGB-graph at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/whole-genome.
-Get the explicit chromosome-specific PGGB-graphs at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/gfas/by-chromosome.
+Get the explicit whole-genome PGGB-graph at https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=pangenomes/freeze/release2/pggb/gfas/whole-genome/.
+Get the explicit chromosome-specific PGGB-graphs at https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=pangenomes/freeze/release2/pggb/gfas/by-chromosome/.
 
 ## Variants
 
-Get the whole-genome PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/whole-genome/.
-Get the chromosome-specific PGGB-graph variants called with VG DECONSTRUCT at https://garrisonlab.s3.amazonaws.com/index.html?prefix=hprcv2/vcfs/by-chromosome.
+Get the whole-genome PGGB-graph variants called with VG DECONSTRUCT at https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=pangenomes/freeze/release2/pggb/vcfs/whole-genome/.
+Get the chromosome-specific PGGB-graph variants called with VG DECONSTRUCT at https://s3-us-west-2.amazonaws.com/human-pangenomics/index.html?prefix=pangenomes/freeze/release2/pggb/vcfs/by-chromosome/.
